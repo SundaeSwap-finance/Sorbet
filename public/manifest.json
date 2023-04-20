@@ -21,6 +21,13 @@
       }
   ],
 
+  "web_accessible_resources": [
+    {
+      "resources": ["js/injectedScript.js", "sorbet.png"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+
   "background": {
     "service_worker": "js/background.js"
   },
