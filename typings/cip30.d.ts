@@ -1,12 +1,14 @@
 export type TPaginate = {
-    page: number;
-    limit: number;
-  };
+  page: number;
+  limit: number;
+};
 
-  export type TDataSignature = {
-    signature: string;
-    key: string;
-  };
+export type TDataSignature = {
+  signature: string;
+  key: string;
+};
+
+export type TNetwork = "mainnet" | "preview";
 
 /**
  * Experimental API
@@ -42,10 +44,7 @@ export type TConnectedApi = {
    * @param amount
    * @param paginate
    */
-  getUtxos(
-    amount?: string | undefined,
-    paginate?: TPaginate | undefined
-  ): Promise<string[] | null>;
+  getUtxos(amount?: string | undefined, paginate?: TPaginate | undefined): Promise<string[] | null>;
 
   /**
    * Errors: APIError
@@ -66,9 +65,7 @@ export type TConnectedApi = {
    *
    * @param amount
    */
-  getCollateral(params: {
-    amount: string;
-  }): Promise<string[] | null>;
+  getCollateral(params: { amount: string }): Promise<string[] | null>;
 
   /**
    * Errors: APIError
@@ -117,10 +114,7 @@ export type TConnectedApi = {
    * @param tx
    * @param partialSign
    */
-  signTx(
-    tx: string,
-    partialSign?: boolean
-  ): Promise<string>;
+  signTx(tx: string, partialSign?: boolean): Promise<string>;
 
   /**
    * Errors: APIError, DataSignError

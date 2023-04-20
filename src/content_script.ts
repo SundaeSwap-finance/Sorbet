@@ -16,13 +16,11 @@ const injectScriptFile = (filename: string) => {
     // Dispatch a custom event with the base URL as a detail
     // this is mostly used so we can load images from the injected content, like the logo for Sorbet
     const extensionBaseURL = chrome.runtime.getURL("");
-    chrome.storage.sync.get({ blockfrostApiKey: "" }, (items) => {
-      const ebuEvent = new CustomEvent("__sorbet_extensionBaseURL", {
-        detail: { extensionBaseURL, apiKey: items?.blockfrostApiKey },
-      });
-      window.dispatchEvent(ebuEvent);
-      script.remove();
+    const ebuEvent = new CustomEvent("__sorbet_extensionBaseURL", {
+      detail: { extensionBaseURL },
     });
+    window.dispatchEvent(ebuEvent);
+    script.remove();
   });
 };
 

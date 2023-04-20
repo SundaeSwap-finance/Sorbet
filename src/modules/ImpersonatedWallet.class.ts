@@ -1,4 +1,4 @@
-import type { TConnectedApi, TDataSignature, TPaginate } from "../../typings/cip30";
+import type { TConnectedApi, TDataSignature, TNetwork, TPaginate } from "../../typings/cip30";
 import { bech32 } from "bech32";
 import { sendMessageToBackground } from "../utils/sendMessageToBackground";
 import { bech32ToHex, getNetworkPrefix, stakeKeyFromAddress } from "../utils/addresses";
@@ -8,26 +8,33 @@ export class ImpersonatedWallet implements TConnectedApi {
   public stakeKey: string;
   public network: number;
   public blockfrostUrl: string;
-  private blockfrostApiKey: string;
 
-  constructor(public address: string, blockfrostApiKey: string) {
+  constructor(public address: string) {
     const network = getNetworkPrefix(address) === "e0" ? 0 : 1;
     this.stakeKey = stakeKeyFromAddress(address);
     this.network = network;
-    this.blockfrostApiKey = blockfrostApiKey;
+    this.blockfrostUrl = `https://cardano-${network === 0 ? "preview" : "mainnet"}.blockfrost.io`;
 
     /**
-     * @TODO Figure out WASM bundling and use serialization.
+     * @TODO Maybe figure out WASM bundling and use serialization if required.
      */
     // const serializedAddress = Address.from_bech32(address);
     // // this.stakeKey = serializedAddress.staking_cred()?.to_keyhash()?.to_bech32("stake") ?? "";
     // // this.network = serializedAddress.network_id();
-    this.blockfrostUrl = `https://cardano-${
-      blockfrostApiKey.indexOf("mainnet") === 0 ? "mainnet" : "preivew"
-    }.blockfrost.io`;
   }
 
   async getBalance(): Promise<string> {
+    // There is a race condition or something happening here with the API.
+    // If you step through the extension background service (I have debuggers in place), it will console the balance to the window.
+    // However, if you don't, it just returns an address.
+    const balance = await sendMessageToBackground({
+      action: "request_getBalance",
+      stakeKey: this.stakeKey,
+      blockfrostUrl: this.blockfrostUrl,
+    });
+
+    console.log(balance);
+
     return "8200a0";
   }
 
@@ -56,7 +63,6 @@ export class ImpersonatedWallet implements TConnectedApi {
       action: "request_getUsedAddresses",
       stakeKey: this.stakeKey,
       blockfrostUrl: this.blockfrostUrl,
-      blockfrostApiKey: this.blockfrostApiKey,
       paginate,
     });
 

@@ -2,7 +2,7 @@ import { ImpersonatedWallet } from "./modules/ImpersonatedWallet.class";
 import { sendMessageToBackground } from "./utils/sendMessageToBackground";
 try {
   window.addEventListener("__sorbet_extensionBaseURL", async (event: CustomEventInit) => {
-    const { extensionBaseURL, apiKey } = event.detail;
+    const { extensionBaseURL } = event.detail;
 
     // Check if the window.cardano object exists or create it
     if (typeof window.cardano === "undefined") {
@@ -28,19 +28,13 @@ try {
         console.log(`Sorbet: wallet injected (wrapping ${isWrapped.wrappedWallet}).`);
       } else if (isImpersonated.result && isImpersonated?.impersonatedWallet) {
         try {
-          if (!apiKey) {
-            throw new Error(
-              "You must include a Blockfrost API key in your extension settings to use Impersonation Mode."
-            );
-          }
-
           let instance: ImpersonatedWallet;
           window.cardano.sorbet = {
             apiVersion: "0.1.0",
             icon: `${extensionBaseURL}sorbet.png`,
             name: "Sorbet",
             enable: async function () {
-              instance = new ImpersonatedWallet(isImpersonated.impersonatedWallet, apiKey);
+              instance = new ImpersonatedWallet(isImpersonated.impersonatedWallet);
               return instance;
             },
             isEnabled: async function () {
