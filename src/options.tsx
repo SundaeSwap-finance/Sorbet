@@ -2,21 +2,19 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const Options = () => {
-  const [color, setColor] = useState<string>("");
+  const [blockfrostUrl, setBlockfrostUrl] = useState<string>("");
+  const [blockfrostApiKey, setBlockfrostApiKey] = useState<string>("");
   const [status, setStatus] = useState<string>("");
-  const [like, setLike] = useState<boolean>(false);
 
   useEffect(() => {
-    // Restores select box and checkbox state using the preferences
-    // stored in chrome.storage.
     chrome.storage.sync.get(
       {
-        favoriteColor: "red",
-        likesColor: true,
+        blockfrostUrl: "",
+        blockfrostApiKey: ""
       },
       (items) => {
-        setColor(items.favoriteColor);
-        setLike(items.likesColor);
+        setBlockfrostUrl(items.blockfrostUrl);
+        setBlockfrostApiKey(items.blockfrostApiKey);
       }
     );
   }, []);
@@ -25,8 +23,8 @@ const Options = () => {
     // Saves options to chrome.storage.sync.
     chrome.storage.sync.set(
       {
-        favoriteColor: color,
-        likesColor: like,
+        blockfrostUrl,
+        blockfrostApiKey
       },
       () => {
         // Update status to let user know options were saved.
@@ -42,24 +40,21 @@ const Options = () => {
   return (
     <>
       <div>
-        Favorite color: <select
-          value={color}
-          onChange={(event) => setColor(event.target.value)}
-        >
-          <option value="red">red</option>
-          <option value="green">green</option>
-          <option value="blue">blue</option>
-          <option value="yellow">yellow</option>
-        </select>
+        <label>
+          Blockfrost URL: <input
+            type="url"
+            value={blockfrostUrl}
+            onChange={(event) => setBlockfrostUrl(event.currentTarget.value)}
+          />
+        </label>
       </div>
       <div>
         <label>
-          <input
-            type="checkbox"
-            checked={like}
-            onChange={(event) => setLike(event.target.checked)}
+          Blockfrost API Key: <input
+            type="url"
+            value={blockfrostApiKey}
+            onChange={(event) => setBlockfrostApiKey(event.currentTarget.value)}
           />
-          I like colors.
         </label>
       </div>
       <div>{status}</div>

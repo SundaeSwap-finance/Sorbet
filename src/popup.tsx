@@ -2,18 +2,27 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const Popup = () => {
-  const [wrappedWallet, setWrappedWallet] = useState<string | undefined>(undefined);
+  const [impersonate, setImpersonate] = useState<string>("");
+  const [wrappedWallet, setWrappedWallet] = useState<string>("");
 
   useEffect(() => {
-    chrome.storage.local.get(['wrappedWallet'], function(result) {
+    chrome.storage.local.get(['wrappedWallet', 'impersonatedWallet'], function(result) {
       setWrappedWallet(result.wrappedWallet);
+      setImpersonate(result.impersonatedWallet);
     });
   }, []);
 
   const updateWrappedWallet = (evt: React.ChangeEvent<HTMLSelectElement>) => {
-    const newValue = evt.target.value === '' ? undefined : evt.target.value;
+    const newValue = evt.currentTarget.value;
     chrome.storage.local.set({ 'wrappedWallet': newValue }, function() {
-      setWrappedWallet(newValue);
+      setWrappedWallet(newValue ?? "");
+    });
+  }
+
+  const updateImpersonatedWallet = (evt: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = evt.currentTarget.value === '' ? undefined : evt.currentTarget.value;
+    chrome.storage.local.set({ 'impersonatedWallet': newValue }, function() {
+      setImpersonate(newValue ?? "");
     });
   }
 
@@ -29,6 +38,9 @@ const Popup = () => {
         <option value="typhoncip30">Typhon</option>
         <option value="yoroi">Yoroi</option>
       </select>
+      <h4>Impersonate Wallet</h4>
+      <input type="text" value={impersonate} onChange={updateImpersonatedWallet} />
+      <button onClick={() => setImpersonate("")}>Clear</button>
     </>
   );
 };
