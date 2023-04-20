@@ -2,49 +2,33 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const Popup = () => {
-  const [count, setCount] = useState(0);
-  const [currentURL, setCurrentURL] = useState<string>();
+  const [wrappedWallet, setWrappedWallet] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    chrome.action.setBadgeText({ text: count.toString() });
-  }, [count]);
-
-  useEffect(() => {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      setCurrentURL(tabs[0].url);
+    chrome.storage.local.get(['wrappedWallet'], function(result) {
+      setWrappedWallet(result.wrappedWallet);
     });
   }, []);
 
-  const changeBackground = () => {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      const tab = tabs[0];
-      if (tab.id) {
-        chrome.tabs.sendMessage(
-          tab.id,
-          {
-            color: "#555555",
-          },
-          (msg) => {
-            console.log("result message:", msg);
-          }
-        );
-      }
+  const updateWrappedWallet = (evt: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = evt.target.value === '' ? undefined : evt.target.value;
+    chrome.storage.local.set({ 'wrappedWallet': newValue }, function() {
+      setWrappedWallet(newValue);
     });
-  };
+  }
 
   return (
     <>
-      <ul style={{ minWidth: "700px" }}>
-        <li>Current URL: {currentURL}</li>
-        <li>Current Time: {new Date().toLocaleTimeString()}</li>
-      </ul>
-      <button
-        onClick={() => setCount(count + 1)}
-        style={{ marginRight: "5px" }}
-      >
-        count up
-      </button>
-      <button onClick={changeBackground}>change background</button>
+      <h1>Sorbet</h1>
+      <p>Wrap wallet</p>
+      <select value={wrappedWallet} onChange={updateWrappedWallet}>
+        <option value="">None</option>
+        <option value="begin">Begin</option>
+        <option value="eternl">Eternl</option>
+        <option value="nami">Nami</option>
+        <option value="typhoncip30">Typhon</option>
+        <option value="yoroi">Yoroi</option>
+      </select>
     </>
   );
 };
