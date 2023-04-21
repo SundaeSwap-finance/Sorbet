@@ -14,6 +14,7 @@ interface Quantity {
 const blockfrostCache: any = {
   usedAddresses: {},
   balance: {},
+  utxos: {},
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -80,7 +81,7 @@ async function handleRequest(request: any) {
           return { error: "No impersonated wallet set" };
         }
         if (blockfrostCache.balance[impersonatedWallet]) {
-          return { id: request.id, balance: blockfrostCache.balance[impersonatedWallet] };
+          return { balance: blockfrostCache.balance[impersonatedWallet] };
         }
         let headers: Record<string, string> = {};
         if (Boolean(blockfrostApiKey)) {
@@ -125,7 +126,7 @@ async function handleRequest(request: any) {
             }
           )
         );
-              // We fold all the asset data up into a single array.
+        // We fold all the asset data up into a single array.
         const balance = allData.reduce((acc, { ada, assets }) => {
           acc.coin = ada
             .reduce((total, { quantity }) => {
@@ -154,8 +155,97 @@ async function handleRequest(request: any) {
 
         blockfrostCache.balance[impersonatedWallet] = balance;
         return {
-          id: request.id,
           balance
+        };
+      }
+      case "request_getUTXOs": {
+        const { impersonatedWallet, blockfrostApiKey } = await getFromStorage({ impersonatedWallet: "", blockfrostApiKey: "" });
+        if (!impersonatedWallet) {
+          return { error: "No impersonated wallet set" };
+        }
+        if (blockfrostCache.utxos[impersonatedWallet]) {
+          return { utxos: blockfrostCache.utxos[impersonatedWallet] };
+        }
+        let headers: Record<string, string> = {};
+        if (Boolean(blockfrostApiKey)) {
+          headers.project_id = blockfrostApiKey;
+        }
+
+        let fetchParams = {
+          method: "GET",
+          headers,
+        };
+        
+        const blockfrostUrl = impersonatedWallet?.startsWith("addr_test") ? "https://cardano-preview.blockfrost.io" : "https://cardano-mainnet.blockfrost.io";
+        const stakeKey = stakeKeyFromAddress(impersonatedWallet);
+        
+        // We get all the addresses based on the stake key.
+        const res = await fetch(
+          new URL(`/api/v0/accounts/${stakeKey}/addresses`, blockfrostUrl),
+          fetchParams
+        );
+        const addresses = await res.json();
+        const allData = await Promise.all(
+          Object.values<{ address: string }>(addresses).map(
+            async ({ address }: { address: string }) => {
+              const res = await fetch(
+                new URL(`/api/v0/addresses/${address}/utxos`, blockfrostUrl),
+                fetchParams
+              );
+              const utxos: any = await res.json();
+              
+              return utxos;
+            }
+          )
+        );
+        // We flatten all utxos into a single array
+        const utxos = allData.flat();
+        // Rencode utxos from blockfrost style unit/quantity tuples, to coin / multiasset objects
+        const utxosWithAssets = utxos.map((utxo: any) => {
+          const { address, tx_hash, output_index, amount } = utxo;
+          let ada: Quantity[] = [];
+          let assets: Quantity[] = [];
+
+          amount?.forEach((asset: any) => {
+            if (asset.unit === "lovelace") {
+              ada.push(asset);
+              return;
+            }
+
+            assets.push(asset);
+          });
+
+          const balance: any = {
+            coin: ada
+              .reduce((total: number, { quantity }: Quantity) => {
+                total += Number(quantity);
+                return total;
+              }, 0),
+          };
+
+          if (assets) {
+            balance.multi_assets = {};
+            assets.forEach(({ quantity, unit }: Quantity) => {
+              let policyId = unit.slice(0, 56);
+              let tokenName = unit.slice(56);
+              if (balance.multi_assets[policyId] === undefined) {
+                balance.multi_assets[policyId] = {};
+              }
+              balance.multi_assets[policyId][tokenName] = Number(balance.multi_assets?.[policyId]?.[tokenName] ?? 0) + Number(quantity);
+            });
+          }
+
+          return {
+            address,
+            tx_hash,
+            output_index,
+            amount: balance,
+          };
+        });
+
+        blockfrostCache.utxos[impersonatedWallet] = utxosWithAssets;
+        return {
+          utxos: utxosWithAssets
         };
       }
       default:
