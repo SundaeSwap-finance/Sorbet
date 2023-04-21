@@ -1,4 +1,5 @@
 import { ImpersonatedWallet } from "./modules/ImpersonatedWallet.class";
+import { EWalletType } from "./types";
 import { sendMessageToBackground } from "./utils/sendMessageToBackground";
 
 try {
@@ -12,24 +13,31 @@ try {
 
     // Check if the window.cardano.sorbet object exists or create it
     if (typeof window.cardano.sorbet === "undefined") {
-      let { wrappedWallet, impersonatedWallet, overriddenWallet } = await sendMessageToBackground({ action: "query_walletConfig" });
-      if (wrappedWallet) {
-        window.cardano.sorbet = {
+      let { wallet, impersonatedWallet, walletType } = await sendMessageToBackground({
+        action: "query_walletConfig",
+      });
+
+      if (walletType !== EWalletType.IMPERSONATE && wallet) {
+        window.cardano[walletType === EWalletType.OVERRIDE ? wallet : "sorbet"] = {
           apiVersion: "0.1.0",
           icon: `${extensionBaseURL}sorbet.png`,
           name: "Sorbet",
           enable: async function () {
-            return window.cardano[wrappedWallet].enable();
+            return window.cardano[wallet].enable();
           },
           isEnabled: async function () {
-            return window.cardano[wrappedWallet].isEnabled();
+            return window.cardano[wallet].isEnabled();
           },
         };
-        console.log(`Sorbet: wallet injected (wrapping ${wrappedWallet}).`);
-      } else if (impersonatedWallet) {
+        {
+          walletType === EWalletType.OVERRIDE
+            ? console.log(`Sorbet: wallet injected (overriding ${wallet}).`)
+            : console.log(`Sorbet: wallet injected (wrapping ${wallet}).`);
+        }
+      } else if (walletType === EWalletType.IMPERSONATE && impersonatedWallet) {
         try {
           let instance: ImpersonatedWallet;
-          window.cardano[overriddenWallet ?? "sorbet"] = {
+          window.cardano["sorbet"] = {
             apiVersion: "0.1.0",
             icon: `${extensionBaseURL}sorbet.png`,
             name: "Sorbet",
@@ -41,9 +49,7 @@ try {
               return instance instanceof ImpersonatedWallet;
             },
           };
-          console.log(
-            `Sorbet: wallet injected (impersonating ${impersonatedWallet}).`
-          );
+          console.log(`Sorbet: wallet injected (impersonating ${impersonatedWallet}).`);
         } catch (e) {
           console.log(e);
         }
