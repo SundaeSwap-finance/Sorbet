@@ -1,4 +1,4 @@
-import type { TConnectedApi, TDataSignature, TExperimentalApi, TNetwork, TPaginate } from "../../typings/cip30";
+import type { TConnectedApi, TDataSignature, TExperimentalApi, TPaginate } from "../../typings/cip30";
 import { sendMessageToBackground } from "../utils/sendMessageToBackground";
 import { bech32ToHex, getNetworkPrefix, stakeKeyFromAddress } from "../utils/addresses";
 import * as cbor from 'cbor-web';

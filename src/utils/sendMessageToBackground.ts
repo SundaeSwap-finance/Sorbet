@@ -4,6 +4,9 @@ export function sendMessageToBackground(payload: any): Promise<any> {
   return new Promise((resolve) => {
     const msgListener = (evt: any) => {
       if (evt.source !== window || evt.data?.type !== "FROM_CONTENT_SCRIPT") return;
+      if (evt.data?.payload?.id === undefined) {
+        console.log("Sorbet: Warning: Received a message from the content script that did not have an ID. This is probably a bug.", evt.data.payload)
+      }
       if (evt.data?.payload?.id !== id) return;
 
       // Remove the event listener after receiving the response

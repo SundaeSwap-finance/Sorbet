@@ -1,5 +1,6 @@
 import { ImpersonatedWallet } from "./modules/ImpersonatedWallet.class";
 import { sendMessageToBackground } from "./utils/sendMessageToBackground";
+
 try {
   window.addEventListener("__sorbet_extensionBaseURL", async (event: CustomEventInit) => {
     const { extensionBaseURL } = event.detail;

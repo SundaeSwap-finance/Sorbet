@@ -2,7 +2,7 @@
   "manifest_version": 3,
 
   "name": "SundaeSwap Sorbet",
-  "description": "A web extension for Cardano development.",
+  "description": "The Cardano Developer's Wallet",
   "version": "1.0",
 
   "options_ui": {
@@ -37,4 +37,5 @@
   "permissions": ["storage"],
 
   "host_permissions": ["<all_urls>"]
+
 }

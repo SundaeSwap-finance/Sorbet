@@ -44,7 +44,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             overriddenWallet: result.overriddenWallet,
           });
         } else {
-          sendResponse({ result: false });
+          sendResponse({ id: request.id, result: false });
         }
       });
 
