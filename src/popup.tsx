@@ -11,22 +11,26 @@ import DebugIcon from "@mui/icons-material/Analytics";
 import Typography from "@mui/material/Typography";
 import Container from "@mui/material/Container";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
-import { InputLabel, Stack, ToggleButton, ToggleButtonGroup } from "@mui/material";
+import { InputLabel, Stack, ToggleButton, ToggleButtonGroup, Switch } from "@mui/material";
 import { EView, EWalletType } from "./types";
+import { WalletSelect } from "./components/wallet-select";
 
 const theme = createTheme();
 
 const Popup = () => {
   const [view, setView] = useState<EView>(EView.OVERRIDE);
-  const [impersonate, setImpersonate] = useState<string>("");
-  const [wallet, setWallet] = useState<string>("none");
   const [walletType, setWalletType] = useState<EWalletType>(EWalletType.IMPERSONATE);
+  const [impersonateAddress, setImpersonateAddress] = useState<string>("");
+  const [wrapWallet, setWrapWallet] = useState<string>("none");
+  const [overrideWallet, setOverrideWallet] = useState<string>("none");
+  const [isOverridden, setIsOverridden] = useState<Boolean>(false);
 
   useEffect(() => {
-    chrome.storage.sync.get(["impersonatedWallet", "walletType", "wallet"], function (result) {
-      setWallet(result.wallet ?? wallet);
+    chrome.storage.sync.get(["impersonatedAddress", "walletType", "wrapWallet", "overrideWallet"], function (result) {
       setWalletType(result.walletType ?? walletType);
-      setImpersonate(result.impersonatedWallet ?? impersonate);
+      setImpersonateAddress(result.impersonatedAddress ?? impersonateAddress);
+      setWrapWallet(result.wrapWallet ?? wrapWallet);
+      setOverrideWallet(result.overrideWallet ?? overrideWallet);
     });
   }, []);
 
@@ -36,21 +40,27 @@ const Popup = () => {
     });
   };
 
-  const updateWallet = (newValue: string) => {
-    chrome.storage.sync.set({ wallet: newValue }, function () {
-      setWallet(newValue ?? "");
+  const updateWrapWallet = (newValue: string) => {
+    chrome.storage.sync.set({ wrapWallet: newValue }, function () {
+      setWrapWallet(newValue ?? "");
+    });
+  };
+
+  const updateOverrideWallet = (newValue: string) => {
+    chrome.storage.sync.set({ overrideWallet: newValue }, function () {
+      setOverrideWallet(newValue ?? "");
     });
   };
 
   const clearImpersonateWallet = () => {
     chrome.storage.sync.set({ impersonatedWallet: "" }, function () {
-      setImpersonate("");
+      setImpersonateAddress("");
     });
   };
 
   const updateImpersonatedWallet = (newValue: string) => {
     chrome.storage.sync.set({ impersonatedWallet: newValue }, function () {
-      setImpersonate(newValue ?? "");
+      setImpersonateAddress(newValue ?? "");
     });
   };
 
@@ -95,6 +105,11 @@ const Popup = () => {
             alignItems: "center",
           }}
         >
+          <InputLabel id="is-override">Override Wallet?</InputLabel>
+          <Switch value={isOverridden} onChange={(e) => setIsOverridden(e.target.checked)} />
+          {isOverridden && (
+            <WalletSelect label="Override" wallet={overrideWallet} onChange={updateOverrideWallet} />
+          )}
           {EView.OVERRIDE === view && (
             <>
               <InputLabel id="wallet-type">Wallet Type</InputLabel>
@@ -108,41 +123,24 @@ const Popup = () => {
               >
                 <MenuItem value="impersonate">Impersonate</MenuItem>
                 <MenuItem value="wrap">Wrap</MenuItem>
-                <MenuItem value="override">Override</MenuItem>
               </Select>
               {EWalletType.IMPERSONATE === walletType ? (
                 <>
                   <TextField
                     label="Impersonated Address"
                     fullWidth
-                    value={impersonate}
+                    value={impersonateAddress}
                     type="text"
                     onChange={(e) => updateImpersonatedWallet(e.target.value)}
                   />
-                  {impersonate && (
+                  {impersonateAddress && (
                     <Button style={{ marginTop: 2 }} onClick={clearImpersonateWallet}>
                       Clear
                     </Button>
                   )}
                 </>
               ) : (
-                <>
-                  <InputLabel id="wallet">Wallet</InputLabel>
-                  <Select
-                    fullWidth
-                    labelId="wallet"
-                    label={wallet}
-                    value={wallet}
-                    onChange={(e) => updateWallet(e.target.value)}
-                  >
-                    <MenuItem value="none">None</MenuItem>
-                    <MenuItem value="begin">Begin</MenuItem>
-                    <MenuItem value="eternl">Eternl</MenuItem>
-                    <MenuItem value="nami">Nami</MenuItem>
-                    <MenuItem value="typhoncip30">Typhon</MenuItem>
-                    <MenuItem value="yoroi">Yoroi</MenuItem>
-                  </Select>
-                </>
+                <WalletSelect wallet={wrapWallet} onChange={updateWrapWallet} />
               )}
             </>
           )}
