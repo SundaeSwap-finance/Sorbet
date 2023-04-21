@@ -8,9 +8,9 @@ const Popup = () => {
 
   useEffect(() => {
     chrome.storage.local.get(['wrappedWallet', 'impersonatedWallet', 'overriddenWallet'], function(result) {
-      setWrappedWallet(result.wrappedWallet);
-      setImpersonate(result.impersonatedWallet);
-      setOveriddenWallet(result.overriddenWallet);
+      setWrappedWallet(result.wrappedWallet ?? "");
+      setImpersonate(result.impersonatedWallet ?? "");
+      setOveriddenWallet(result.overriddenWallet ?? "");
     });
   }, []);
 
@@ -18,6 +18,12 @@ const Popup = () => {
     const newValue = evt.currentTarget.value;
     chrome.storage.local.set({ 'wrappedWallet': newValue }, function() {
       setWrappedWallet(newValue ?? "");
+    });
+  }
+
+  const clearImpersonateWallet = () => {
+    chrome.storage.local.set({ 'impersonatedWallet': '' }, function() {
+      setImpersonate("");
     });
   }
 
@@ -49,7 +55,7 @@ const Popup = () => {
       </select>
       <h4>Impersonate Wallet</h4>
       <input type="text" value={impersonate} onChange={updateImpersonatedWallet} />
-      <button onClick={() => setImpersonate("")}>Clear</button>
+      <button onClick={clearImpersonateWallet}>Clear</button>
       <p>Override wallet</p>
       <select value={overiddenWallet} onChange={updateOveriddenWallet}>
         <option value="">None</option>
