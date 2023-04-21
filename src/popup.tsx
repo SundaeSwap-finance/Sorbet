@@ -7,7 +7,7 @@ const Popup = () => {
   const [overiddenWallet, setOveriddenWallet] = useState<string>("");
 
   useEffect(() => {
-    chrome.storage.local.get(['wrappedWallet', 'impersonatedWallet', 'overriddenWallet'], function(result) {
+    chrome.storage.sync.get(['wrappedWallet', 'impersonatedWallet', 'overriddenWallet'], function(result) {
       setWrappedWallet(result.wrappedWallet ?? "");
       setImpersonate(result.impersonatedWallet ?? "");
       setOveriddenWallet(result.overriddenWallet ?? "");
@@ -16,27 +16,27 @@ const Popup = () => {
 
   const updateWrappedWallet = (evt: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = evt.currentTarget.value;
-    chrome.storage.local.set({ 'wrappedWallet': newValue }, function() {
+    chrome.storage.sync.set({ 'wrappedWallet': newValue }, function() {
       setWrappedWallet(newValue ?? "");
     });
   }
 
   const clearImpersonateWallet = () => {
-    chrome.storage.local.set({ 'impersonatedWallet': '' }, function() {
+    chrome.storage.sync.set({ 'impersonatedWallet': '' }, function() {
       setImpersonate("");
     });
   }
 
   const updateImpersonatedWallet = (evt: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = evt.currentTarget.value;
-    chrome.storage.local.set({ 'impersonatedWallet': newValue }, function() {
+    chrome.storage.sync.set({ 'impersonatedWallet': newValue }, function() {
       setImpersonate(newValue ?? "");
     });
   }
 
   const updateOveriddenWallet = (evt: React.ChangeEvent<HTMLSelectElement>) => {
     const newValue = evt.currentTarget.value;
-    chrome.storage.local.set({ 'overriddenWallet': newValue }, function() {
+    chrome.storage.sync.set({ 'overriddenWallet': newValue }, function() {
       setOveriddenWallet(newValue ?? "");
     });
   }

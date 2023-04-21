@@ -34,7 +34,7 @@ try {
             icon: `${extensionBaseURL}sorbet.png`,
             name: "Sorbet",
             enable: async function () {
-              instance = new ImpersonatedWallet(impersonatedWallet);
+              instance = new ImpersonatedWallet();
               return instance;
             },
             isEnabled: async function () {
