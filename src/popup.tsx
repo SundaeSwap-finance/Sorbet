@@ -29,7 +29,7 @@ const Popup = () => {
   }
 
   const updateOveriddenWallet = (evt: React.ChangeEvent<HTMLSelectElement>) => {
-    const newValue = evt.currentTarget.value === '' ? undefined : evt.currentTarget.value;
+    const newValue = evt.currentTarget.value;
     chrome.storage.local.set({ 'overriddenWallet': newValue }, function() {
       setOveriddenWallet(newValue ?? "");
     });
