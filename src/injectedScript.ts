@@ -12,31 +12,29 @@ try {
 
     // Check if the window.cardano.sorbet object exists or create it
     if (typeof window.cardano.sorbet === "undefined") {
-      let isWrapped = await sendMessageToBackground({ action: "query_isWrapped" });
-      let isImpersonated = await sendMessageToBackground({ action: "query_isImpersonated" });
-      if (isWrapped.result) {
+      let { wrappedWallet, impersonatedWallet, overriddenWallet } = await sendMessageToBackground({ action: "query_walletConfig" });
+      if (wrappedWallet) {
         window.cardano.sorbet = {
           apiVersion: "0.1.0",
           icon: `${extensionBaseURL}sorbet.png`,
           name: "Sorbet",
           enable: async function () {
-            return window.cardano[isWrapped.wrappedWallet].enable();
+            return window.cardano[wrappedWallet].enable();
           },
           isEnabled: async function () {
-            return window.cardano[isWrapped.wrappedWallet].isEnabled();
+            return window.cardano[wrappedWallet].isEnabled();
           },
         };
-        console.log(`Sorbet: wallet injected (wrapping ${isWrapped.wrappedWallet}).`);
-      } else if (isImpersonated.result && isImpersonated?.impersonatedWallet) {
-        let isOverridden = await sendMessageToBackground({ action: "query_isOverridden" });
+        console.log(`Sorbet: wallet injected (wrapping ${wrappedWallet}).`);
+      } else if (impersonatedWallet) {
         try {
           let instance: ImpersonatedWallet;
-          window.cardano[isOverridden.result ? isOverridden.overriddenWallet : "sorbet"] = {
+          window.cardano[overriddenWallet ?? "sorbet"] = {
             apiVersion: "0.1.0",
             icon: `${extensionBaseURL}sorbet.png`,
             name: "Sorbet",
             enable: async function () {
-              instance = new ImpersonatedWallet(isImpersonated.impersonatedWallet);
+              instance = new ImpersonatedWallet(impersonatedWallet);
               return instance;
             },
             isEnabled: async function () {
@@ -44,7 +42,7 @@ try {
             },
           };
           console.log(
-            `Sorbet: wallet injected (impersonating ${isImpersonated.impersonatedWallet}).`
+            `Sorbet: wallet injected (impersonating ${impersonatedWallet}).`
           );
         } catch (e) {
           console.log(e);

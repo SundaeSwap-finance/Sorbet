@@ -10,45 +10,16 @@ interface Quantity {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   switch (request.action) {
-    case "query_isWrapped":
-      chrome.storage.local.get(["wrappedWallet"], (result) => {
-        if (Boolean(result.wrappedWallet)) {
-          sendResponse({ id: request.id, result: true, wrappedWallet: result.wrappedWallet });
-        } else {
-          sendResponse({ id: request.id, result: false });
-        }
+    case "query_walletConfig":
+      chrome.storage.local.get(["wrappedWallet", "impersonatedWallet", "overriddenWallet"], (result) => {
+        sendResponse({
+          id: request.id,
+          wrappedWallet: result.wrappedWallet,
+          impersonatedWallet: result.impersonatedWallet,
+          overriddenWallet: result.overriddenWallet,
+        });
       });
-      return true;
-
-    case "query_isImpersonated":
-      chrome.storage.local.get(["impersonatedWallet"], (result) => {
-        if (result.impersonatedWallet) {
-          sendResponse({
-            id: request.id,
-            result: true,
-            impersonatedWallet: result.impersonatedWallet,
-          });
-        } else {
-          sendResponse({ result: false });
-        }
-      });
-
-      return true;
-    
-    case "query_isOverridden":
-      chrome.storage.local.get(["overriddenWallet"], (result) => {
-        if (result.overriddenWallet) {
-          sendResponse({
-            id: request.id,
-            result: true,
-            overriddenWallet: result.overriddenWallet,
-          });
-        } else {
-          sendResponse({ id: request.id, result: false });
-        }
-      });
-
-      return true;
+      return true
       
     case "request_getUsedAddresses":
       chrome.storage.sync.get({ blockfrostApiKey: "" }, (items) => {
