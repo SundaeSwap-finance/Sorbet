@@ -1,4 +1,5 @@
 import { stakeKeyFromAddress } from "./utils/addresses";
+import { getFromStorage } from "./utils/storage";
 
 interface Asset {
   unit: string;
@@ -16,76 +17,74 @@ const blockfrostCache: any = {
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  (async () => {
+    const response = await handleRequest(request);
+    response.id = request.id;
+    sendResponse(response);
+  })();
+  return true;
+});
+
+async function handleRequest(request: any) {
   switch (request.action) {
-    case "query_walletConfig":
-      chrome.storage.sync.get(["wrappedWallet", "impersonatedWallet", "overriddenWallet"], (result) => {
-        const network = result.impersonatedWallet?.startsWith("addr_test") ? 0 : 1;
-        sendResponse({
-          id: request.id,
-          wrappedWallet: result.wrappedWallet,
-          impersonatedWallet: result.impersonatedWallet,
-          overriddenWallet: result.overriddenWallet,
-          network,
-        });
-      });
-      return true
-      
-    case "request_getUsedAddresses":
-      chrome.storage.sync.get({ impersonatedWallet: "", blockfrostApiKey: "" }, (items) => {
-        if (!items.impersonatedWallet) {
-          sendResponse({ error: "No impersonated wallet set" });
-          return;
+      case "query_walletConfig": {
+        const { wrappedWallet, impersonatedWallet, overriddenWallet } = await getFromStorage(["wrappedWallet", "impersonatedWallet", "overriddenWallet"]);
+          const network = impersonatedWallet?.startsWith("addr_test") ? 0 : 1;
+          return {
+            wrappedWallet: wrappedWallet,
+            impersonatedWallet: impersonatedWallet,
+            overriddenWallet: overriddenWallet,
+            network,
+          };
+      }
+      case "request_getUsedAddresses": {
+        const { impersonatedWallet, blockfrostApiKey } = await getFromStorage({ impersonatedWallet: "", blockfrostApiKey: "" });
+        if (!impersonatedWallet) {
+          return { error: "No impersonated wallet set" };
         }
-        if (blockfrostCache.usedAddresses[items.impersonatedWallet]) {
-          sendResponse({ id: request.id, addresses: blockfrostCache.usedAddresses[items.impersonatedWallet] });
-          return;
+        if (blockfrostCache.usedAddresses[impersonatedWallet]) {
+          return { addresses: blockfrostCache.usedAddresses[impersonatedWallet] };
         }
 
         let headers: Record<string, string> = {};
-        if (items?.blockfrostApiKey) {
-          headers.project_id = items.blockfrostApiKey;
+        if (blockfrostApiKey) {
+          headers.project_id = blockfrostApiKey;
         }
 
         let fetchParams = {
           method: "GET",
           headers,
         };
-        const blockfrostUrl = items.impersonatedWallet?.startsWith("addr_test") ? "https://cardano-preview.blockfrost.io" : "https://cardano-mainnet.blockfrost.io";
-        const stakeKey = stakeKeyFromAddress(items.impersonatedWallet);
+        const blockfrostUrl = impersonatedWallet?.startsWith("addr_test") ? "https://cardano-preview.blockfrost.io" : "https://cardano-mainnet.blockfrost.io";
+        const stakeKey = stakeKeyFromAddress(impersonatedWallet);
         const usedAddressesUrl = new URL(
           `/api/v0/accounts/${stakeKey}/addresses`,
           blockfrostUrl
         );
         usedAddressesUrl.searchParams.set("count", (request?.paginate?.limit ?? 100).toString());
         usedAddressesUrl.searchParams.set("page", (request?.paginate?.page ?? 1).toString());
-        fetch(usedAddressesUrl, fetchParams)
-          .then((res) => res.json())
-          .then((addrs) => {
-            const addresses = addrs.map(({ address }: { address: string }) => {
-              return address;
-            })
-            blockfrostCache.usedAddresses[items.impersonatedWallet] = addresses;
-            sendResponse({
-              id: request.id,
-              addresses,
-            });
-          });
-      });
-
-      return true;
-    case "request_getBalance":
-      chrome.storage.sync.get({ impersonatedWallet: "", blockfrostApiKey: "" }, (items) => {
-        if (!items.impersonatedWallet) {
-          sendResponse({ error: "No impersonated wallet set" });
-          return;
+        const res = await fetch(usedAddressesUrl, fetchParams);
+        const addrs = await res.json();
+        const addresses = addrs.map(({ address }: { address: string }) => {
+          return address;
+        })
+        blockfrostCache.usedAddresses[impersonatedWallet] = addresses;
+        return {
+          id: request.id,
+          addresses,
+        };
+      }
+      case "request_getBalance": {
+        const { impersonatedWallet, blockfrostApiKey } = await getFromStorage({ impersonatedWallet: "", blockfrostApiKey: "" });
+        if (!impersonatedWallet) {
+          return { error: "No impersonated wallet set" };
         }
-        if (blockfrostCache.balance[items.impersonatedWallet]) {
-          sendResponse({ id: request.id, balance: blockfrostCache.balance[items.impersonatedWallet] });
-          return;
+        if (blockfrostCache.balance[impersonatedWallet]) {
+          return { id: request.id, balance: blockfrostCache.balance[impersonatedWallet] };
         }
         let headers: Record<string, string> = {};
-        if (items?.blockfrostApiKey) {
-          headers.project_id = items.blockfrostApiKey;
+        if (Boolean(blockfrostApiKey)) {
+          headers.project_id = blockfrostApiKey;
         }
 
         let fetchParams = {
@@ -93,81 +92,73 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           headers,
         };
         
-        const blockfrostUrl = items.impersonatedWallet?.startsWith("addr_test") ? "https://cardano-preview.blockfrost.io" : "https://cardano-mainnet.blockfrost.io";
-        const stakeKey = stakeKeyFromAddress(items.impersonatedWallet);
+        const blockfrostUrl = impersonatedWallet?.startsWith("addr_test") ? "https://cardano-preview.blockfrost.io" : "https://cardano-mainnet.blockfrost.io";
+        const stakeKey = stakeKeyFromAddress(impersonatedWallet);
         
         // We get all the addresses based on the stake key.
-        fetch(
+        const res = await fetch(
           new URL(`/api/v0/accounts/${stakeKey}/addresses`, blockfrostUrl),
           fetchParams
-        )
-          .then((res) => res.json())
-          .then((addresses) =>
-            Promise.all(
-              Object.values<{ address: string }>(addresses).map(
-                async ({ address }: { address: string }) => {
-                  return fetch(
-                    new URL(`/api/v0/addresses/${address}`, blockfrostUrl),
-                    fetchParams
-                  )
-                    .then((res) => res.json())
-                    .then(({ amount }: { amount: Quantity[] }) => {
-                      let ada: Quantity[] = [];
-                      let assets: Quantity[] = [];
+        );
+        const addresses = await res.json();
+        const allData = await Promise.all(
+          Object.values<{ address: string }>(addresses).map(
+            async ({ address }: { address: string }) => {
+              const res = await fetch(
+                new URL(`/api/v0/addresses/${address}`, blockfrostUrl),
+                fetchParams
+              );
+              const { amount }: { amount: Quantity[] } = await res.json();
+              let ada: Quantity[] = [];
+              let assets: Quantity[] = [];
 
-                      amount?.forEach((asset) => {
-                        if (asset.unit === "lovelace") {
-                          ada.push(asset);
-                          return;
-                        }
-
-                        assets.push(asset);
-                      });
-
-                      return { ada, assets };
-                    });
-                }
-              )
-            ).then((allData) => {
-              // We fold all the asset data up into a single array.
-              return allData.reduce((acc, { ada, assets }) => {
-                acc.coin = ada
-                  .reduce((total, { quantity }) => {
-                    total += Number(quantity);
-                    return total;
-                  }, 0)
-                  .toString();
-
-                if (assets) {
-                  if (!acc?.multi_assets) {
-                    acc.multi_assets = {};
-                  }
-
-                  assets.forEach(({ quantity, unit }) => {
-                    let policyId = unit.slice(0, 56);
-                    let tokenName = unit.slice(56);
-                    if (acc.multi_assets[policyId] === undefined) {
-                      acc.multi_assets[policyId] = {};
-                    }
-                    acc.multi_assets[policyId][tokenName] = Number(acc.multi_assets?.[policyId]?.[tokenName] ?? 0) + Number(quantity);
-                  });
+              amount?.forEach((asset) => {
+                if (asset.unit === "lovelace") {
+                  ada.push(asset);
+                  return;
                 }
 
-                return acc;
-              }, {} as Record<string, any>);
-            })
+                assets.push(asset);
+              });
+
+              return { ada, assets };
+            }
           )
-          .then((balance) => {
-            blockfrostCache.balance[items.impersonatedWallet] = balance;
-            sendResponse({
-              id: request.id,
-              balance
-            });
-          });
-      });
+        );
+              // We fold all the asset data up into a single array.
+        const balance = allData.reduce((acc, { ada, assets }) => {
+          acc.coin = ada
+            .reduce((total, { quantity }) => {
+              total += Number(quantity);
+              return total;
+            }, 0)
+            .toString();
 
-      return true;
-    default:
-      console.log("Unrecognized message: ", request);
-  }
-});
+          if (assets) {
+            if (!acc?.multi_assets) {
+              acc.multi_assets = {};
+            }
+
+            assets.forEach(({ quantity, unit }) => {
+              let policyId = unit.slice(0, 56);
+              let tokenName = unit.slice(56);
+              if (acc.multi_assets[policyId] === undefined) {
+                acc.multi_assets[policyId] = {};
+              }
+              acc.multi_assets[policyId][tokenName] = Number(acc.multi_assets?.[policyId]?.[tokenName] ?? 0) + Number(quantity);
+            });
+          }
+
+          return acc;
+        }, {} as Record<string, any>);
+
+        blockfrostCache.balance[impersonatedWallet] = balance;
+        return {
+          id: request.id,
+          balance
+        };
+      }
+      default:
+        return { error: `Unrecognized action ${request.action}`};
+    }
+}
