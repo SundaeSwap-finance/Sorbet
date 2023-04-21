@@ -27,9 +27,10 @@ try {
         };
         console.log(`Sorbet: wallet injected (wrapping ${isWrapped.wrappedWallet}).`);
       } else if (isImpersonated.result && isImpersonated?.impersonatedWallet) {
+        let isOverridden = await sendMessageToBackground({ action: "query_isOverridden" });
         try {
           let instance: ImpersonatedWallet;
-          window.cardano.sorbet = {
+          window.cardano[isOverridden.result ? isOverridden.overriddenWallet : "sorbet"] = {
             apiVersion: "0.1.0",
             icon: `${extensionBaseURL}sorbet.png`,
             name: "Sorbet",

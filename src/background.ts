@@ -34,6 +34,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
 
       return true;
+    
+    case "query_isOverridden":
+      chrome.storage.local.get(["overriddenWallet"], (result) => {
+        if (result.overriddenWallet) {
+          sendResponse({
+            id: request.id,
+            result: true,
+            overriddenWallet: result.overriddenWallet,
+          });
+        } else {
+          sendResponse({ result: false });
+        }
+      });
+
+      return true;
+      
     case "request_getUsedAddresses":
       chrome.storage.sync.get({ blockfrostApiKey: "" }, (items) => {
         let headers: Record<string, string> = {};
@@ -129,9 +145,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     if (acc.multi_assets[policyId] === undefined) {
                       acc.multi_assets[policyId] = {};
                     }
-                    acc.multi_assets[policyId] = {
-                      [tokenName]: Number(acc.multi_assets?.[unit] ?? 0) + Number(quantity)
-                    };
+                    acc.multi_assets[policyId][tokenName] = Number(acc.multi_assets?.[policyId]?.[tokenName] ?? 0) + Number(quantity);
                   });
                 }
 
