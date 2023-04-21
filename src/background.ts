@@ -13,9 +13,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "query_isWrapped":
       chrome.storage.local.get(["wrappedWallet"], (result) => {
         if (Boolean(result.wrappedWallet)) {
-          sendResponse({ result: true, wrappedWallet: result.wrappedWallet });
+          sendResponse({ id: request.id, result: true, wrappedWallet: result.wrappedWallet });
         } else {
-          sendResponse({ result: false });
+          sendResponse({ id: request.id, result: false });
         }
       });
       return true;
@@ -24,6 +24,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       chrome.storage.local.get(["impersonatedWallet"], (result) => {
         if (result.impersonatedWallet) {
           sendResponse({
+            id: request.id,
             result: true,
             impersonatedWallet: result.impersonatedWallet,
           });
@@ -53,11 +54,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         fetch(usedAddressesUrl, fetchParams)
           .then((res) => res.json())
           .then((addresses) => {
-            sendResponse(
-              addresses.map(({ address }: { address: string }) => {
+            sendResponse({
+              id: request.id,
+              addresses: addresses.map(({ address }: { address: string }) => {
                 return address;
               })
-            );
+            });
           });
       });
 
@@ -90,7 +92,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   )
                     .then((res) => res.json())
                     .then(({ amount }: { amount: Quantity[] }) => {
-                      debugger;
                       let ada: Quantity[] = [];
                       let assets: Quantity[] = [];
 
@@ -108,7 +109,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
               )
             ).then((allData) => {
-              debugger;
               // We fold all the asset data up into a single array.
               return allData.reduce((acc, { ada, assets }) => {
                 acc.coin = ada
@@ -124,9 +124,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   }
 
                   assets.forEach(({ quantity, unit }) => {
-                    acc.multi_assets[unit] = (
-                      Number(acc.multi_assets?.[unit] ?? 0) + Number(quantity)
-                    ).toString();
+                    let policyId = unit.slice(0, 56);
+                    let tokenName = unit.slice(56);
+                    if (acc.multi_assets[policyId] === undefined) {
+                      acc.multi_assets[policyId] = {};
+                    }
+                    acc.multi_assets[policyId] = {
+                      [tokenName]: Number(acc.multi_assets?.[unit] ?? 0) + Number(quantity)
+                    };
                   });
                 }
 
@@ -134,9 +139,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               }, {} as Record<string, any>);
             })
           )
-          .then((allAssets) => {
-            debugger;
-            sendResponse(allAssets);
+          .then((balance) => {
+            sendResponse({
+              id: request.id,
+              balance
+            });
           });
       });
 

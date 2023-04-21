@@ -1,7 +1,10 @@
 export function sendMessageToBackground(payload: any): Promise<any> {
+  const id = Math.random().toString(36).substr(2, 9);
+  payload.id = id;
   return new Promise((resolve) => {
     const msgListener = (evt: any) => {
       if (evt.source !== window || evt.data?.type !== "FROM_CONTENT_SCRIPT") return;
+      if (evt.data?.payload?.id !== id) return;
 
       // Remove the event listener after receiving the response
       window.removeEventListener("message", msgListener);

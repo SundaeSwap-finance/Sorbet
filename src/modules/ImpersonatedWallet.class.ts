@@ -1,7 +1,7 @@
 import type { TConnectedApi, TDataSignature, TNetwork, TPaginate } from "../../typings/cip30";
-import { bech32 } from "bech32";
 import { sendMessageToBackground } from "../utils/sendMessageToBackground";
 import { bech32ToHex, getNetworkPrefix, stakeKeyFromAddress } from "../utils/addresses";
+import * as cbor from 'cbor-web';
 // import { Address } from "@dcspark/cardano-multiplatform-lib-browser";
 
 export class ImpersonatedWallet implements TConnectedApi {
@@ -27,15 +27,28 @@ export class ImpersonatedWallet implements TConnectedApi {
     // There is a race condition or something happening here with the API.
     // If you step through the extension background service (I have debuggers in place), it will console the balance to the window.
     // However, if you don't, it just returns an address.
-    const balance = await sendMessageToBackground({
+    const { balance } = await sendMessageToBackground({
       action: "request_getBalance",
       stakeKey: this.stakeKey,
       blockfrostUrl: this.blockfrostUrl,
     });
 
-    console.log(balance);
+    // rencode the multiassets to a map of buffers, parsing hex keys on the object to byte buffers
+    let multiAsset = new Map<Buffer, Map<Buffer, number>>();
+    for (const policyId of Object.keys(balance.multi_assets)) {
+      for (const assetName of Object.keys(balance.multi_assets[policyId])) {
+        const asset = balance.multi_assets[policyId][assetName];
+        const policyIdBuffer = Buffer.from(policyId, 'hex');
+        const assetNameBuffer = Buffer.from(assetName, 'hex');
+        if (!multiAsset.has(policyIdBuffer)) {
+          multiAsset.set(policyIdBuffer, new Map<Buffer, number>());
+        }
+        multiAsset.get(policyIdBuffer)?.set(assetNameBuffer, asset);
+      }
+    }
+    const encoded = cbor.encode([Number(balance.coin), multiAsset]).toString('hex');
 
-    return "8200a0";
+    return encoded;
   }
 
   async getChangeAddress(): Promise<string> {
@@ -59,7 +72,7 @@ export class ImpersonatedWallet implements TConnectedApi {
   }
 
   async getUsedAddresses(paginate?: TPaginate | undefined): Promise<string[]> {
-    const addresses = await sendMessageToBackground({
+    const { addresses } = await sendMessageToBackground({
       action: "request_getUsedAddresses",
       stakeKey: this.stakeKey,
       blockfrostUrl: this.blockfrostUrl,
@@ -67,7 +80,7 @@ export class ImpersonatedWallet implements TConnectedApi {
     });
 
     const toHex = addresses?.map((addr: string) => bech32ToHex(addr));
-    console.log(toHex);
+    console.log("usedAddresses: ", toHex);
     return toHex;
   }
 
