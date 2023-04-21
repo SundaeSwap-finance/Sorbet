@@ -26,12 +26,15 @@ const Popup = () => {
   const [isOverridden, setIsOverridden] = useState<Boolean>(false);
 
   useEffect(() => {
-    chrome.storage.sync.get(["impersonatedAddress", "walletType", "wrapWallet", "overrideWallet"], function (result) {
-      setWalletType(result.walletType ?? walletType);
-      setImpersonateAddress(result.impersonatedAddress ?? impersonateAddress);
-      setWrapWallet(result.wrapWallet ?? wrapWallet);
-      setOverrideWallet(result.overrideWallet ?? overrideWallet);
-    });
+    chrome.storage.sync.get(
+      ["impersonatedAddress", "walletType", "wrapWallet", "overrideWallet"],
+      function (result) {
+        setWalletType(result.walletType ?? walletType);
+        setImpersonateAddress(result.impersonatedAddress ?? impersonateAddress);
+        setWrapWallet(result.wrapWallet ?? wrapWallet);
+        setOverrideWallet(result.overrideWallet ?? overrideWallet);
+      }
+    );
   }, []);
 
   const updateWalletType = (newValue: EWalletType) => {
@@ -99,17 +102,11 @@ const Popup = () => {
         <Box
           sx={{
             marginTop: 2,
-            marginBottom: 2,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
           }}
         >
-          <InputLabel id="is-override">Override Wallet?</InputLabel>
-          <Switch value={isOverridden} onChange={(e) => setIsOverridden(e.target.checked)} />
-          {isOverridden && (
-            <WalletSelect label="Override" wallet={overrideWallet} onChange={updateOverrideWallet} />
-          )}
           {EView.OVERRIDE === view && (
             <>
               <InputLabel id="wallet-type">Wallet Type</InputLabel>
@@ -145,6 +142,19 @@ const Popup = () => {
             </>
           )}
         </Box>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <InputLabel id="is-override">Override Wallet?</InputLabel>
+          <Switch value={isOverridden} onChange={(e) => setIsOverridden(e.target.checked)} />
+        </Box>
+        {isOverridden && (
+          <WalletSelect label="" wallet={overrideWallet} onChange={updateOverrideWallet} />
+        )}
       </Container>
     </ThemeProvider>
   );
