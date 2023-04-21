@@ -22,7 +22,7 @@ const Popup = () => {
   }
 
   const updateImpersonatedWallet = (evt: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = evt.currentTarget.value === '' ? undefined : evt.currentTarget.value;
+    const newValue = evt.currentTarget.value;
     chrome.storage.local.set({ 'impersonatedWallet': newValue }, function() {
       setImpersonate(newValue ?? "");
     });
