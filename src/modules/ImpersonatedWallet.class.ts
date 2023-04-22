@@ -72,10 +72,10 @@ export class ImpersonatedWallet implements TConnectedApi {
   }
 
   async getChangeAddress(): Promise<string> {
-    const { impersonatedWallet } = await sendMessageToBackground({
+    const { impersonatedAddress } = await sendMessageToBackground({
       action: "query_walletConfig",
     });
-    return bech32ToHex(impersonatedWallet);
+    return bech32ToHex(impersonatedAddress);
   }
 
   async getCollateral(params: { amount: string }): Promise<string[] | null> {
@@ -98,10 +98,10 @@ export class ImpersonatedWallet implements TConnectedApi {
   }
 
   async getUnusedAddresses(paginate?: TPaginate | undefined): Promise<string[]> {
-    const { impersonatedWallet } = await sendMessageToBackground({
+    const { impersonatedAddress } = await sendMessageToBackground({
       action: "query_walletConfig",
     });
-    return [bech32ToHex(impersonatedWallet)];
+    return [bech32ToHex(impersonatedAddress)];
   }
 
   async getUsedAddresses(paginate?: TPaginate | undefined): Promise<string[]> {

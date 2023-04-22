@@ -13,7 +13,7 @@ try {
 
     // Check if the window.cardano.sorbet object exists or create it
     if (typeof window.cardano.sorbet === "undefined") {
-      let { wallet, impersonatedWallet, walletType } = await sendMessageToBackground({
+      let { wallet, impersonatedAddress, walletType } = await sendMessageToBackground({
         action: "query_walletConfig",
       });
 
@@ -34,7 +34,7 @@ try {
             ? console.log(`Sorbet: wallet injected (overriding ${wallet}).`)
             : console.log(`Sorbet: wallet injected (wrapping ${wallet}).`);
         }
-      } else if (walletType === EWalletType.IMPERSONATE && impersonatedWallet) {
+      } else if (walletType === EWalletType.IMPERSONATE && impersonatedAddress) {
         try {
           let instance: ImpersonatedWallet;
           window.cardano["sorbet"] = {
@@ -49,7 +49,7 @@ try {
               return instance instanceof ImpersonatedWallet;
             },
           };
-          console.log(`Sorbet: wallet injected (impersonating ${impersonatedWallet}).`);
+          console.log(`Sorbet: wallet injected (impersonating ${impersonatedAddress}).`);
         } catch (e) {
           console.log(e);
         }

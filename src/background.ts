@@ -29,29 +29,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 async function handleRequest(request: any) {
   switch (request.action) {
     case "query_walletConfig": {
-      const { walletType, impersonatedWallet, wallet } = await getFromStorage([
+      const { walletType, impersonatedAddress, wallet } = await getFromStorage([
         "wallet",
-        "impersonatedWallet",
+        "impersonatedAddress",
         "walletType",
       ]);
-      const network = impersonatedWallet?.startsWith("addr_test") ? 0 : 1;
+      const network = impersonatedAddress?.startsWith("addr_test") ? 0 : 1;
       return {
         walletType,
         wallet,
-        impersonatedWallet,
+        impersonatedAddress,
         network,
       };
     }
     case "request_getUsedAddresses": {
-      const { impersonatedWallet, blockfrostApiKey } = await getFromStorage({
-        impersonatedWallet: "",
+      const { impersonatedAddress, blockfrostApiKey } = await getFromStorage({
+        impersonatedAddress: "",
         blockfrostApiKey: "",
       });
-      if (!impersonatedWallet) {
-        return { error: "No impersonated wallet set" };
+      if (!impersonatedAddress) {
+        return { error: "No impersonated address set" };
       }
-      if (blockfrostCache.usedAddresses[impersonatedWallet]) {
-        return { addresses: blockfrostCache.usedAddresses[impersonatedWallet] };
+      if (blockfrostCache.usedAddresses[impersonatedAddress]) {
+        return { addresses: blockfrostCache.usedAddresses[impersonatedAddress] };
       }
 
       let headers: Record<string, string> = {};
@@ -63,10 +63,10 @@ async function handleRequest(request: any) {
         method: "GET",
         headers,
       };
-      const blockfrostUrl = impersonatedWallet?.startsWith("addr_test")
+      const blockfrostUrl = impersonatedAddress?.startsWith("addr_test")
         ? "https://cardano-preview.blockfrost.io"
         : "https://cardano-mainnet.blockfrost.io";
-      const stakeKey = stakeKeyFromAddress(impersonatedWallet);
+      const stakeKey = stakeKeyFromAddress(impersonatedAddress);
       const usedAddressesUrl = new URL(`/api/v0/accounts/${stakeKey}/addresses`, blockfrostUrl);
       usedAddressesUrl.searchParams.set("count", (request?.paginate?.limit ?? 100).toString());
       usedAddressesUrl.searchParams.set("page", (request?.paginate?.page ?? 1).toString());
@@ -75,22 +75,22 @@ async function handleRequest(request: any) {
       const addresses = addrs.map(({ address }: { address: string }) => {
         return address;
       });
-      blockfrostCache.usedAddresses[impersonatedWallet] = addresses;
+      blockfrostCache.usedAddresses[impersonatedAddress] = addresses;
       return {
         id: request.id,
         addresses,
       };
     }
     case "request_getBalance": {
-      const { impersonatedWallet, blockfrostApiKey } = await getFromStorage({
-        impersonatedWallet: "",
+      const { impersonatedAddress, blockfrostApiKey } = await getFromStorage({
+        impersonatedAddress: "",
         blockfrostApiKey: "",
       });
-      if (!impersonatedWallet) {
-        return { error: "No impersonated wallet set" };
+      if (!impersonatedAddress) {
+        return { error: "No impersonated address set" };
       }
-      if (blockfrostCache.balance[impersonatedWallet]) {
-        return { balance: blockfrostCache.balance[impersonatedWallet] };
+      if (blockfrostCache.balance[impersonatedAddress]) {
+        return { balance: blockfrostCache.balance[impersonatedAddress] };
       }
       let headers: Record<string, string> = {};
       if (Boolean(blockfrostApiKey)) {
@@ -102,10 +102,10 @@ async function handleRequest(request: any) {
         headers,
       };
 
-      const blockfrostUrl = impersonatedWallet?.startsWith("addr_test")
+      const blockfrostUrl = impersonatedAddress?.startsWith("addr_test")
         ? "https://cardano-preview.blockfrost.io"
         : "https://cardano-mainnet.blockfrost.io";
-      const stakeKey = stakeKeyFromAddress(impersonatedWallet);
+      const stakeKey = stakeKeyFromAddress(impersonatedAddress);
 
       // We get all the addresses based on the stake key.
       const res = await fetch(
@@ -166,21 +166,21 @@ async function handleRequest(request: any) {
         return acc;
       }, {} as Record<string, any>);
 
-      blockfrostCache.balance[impersonatedWallet] = balance;
+      blockfrostCache.balance[impersonatedAddress] = balance;
       return {
         balance,
       };
     }
     case "request_getUTXOs": {
-      const { impersonatedWallet, blockfrostApiKey } = await getFromStorage({
-        impersonatedWallet: "",
+      const { impersonatedAddress, blockfrostApiKey } = await getFromStorage({
+        impersonatedAddress: "",
         blockfrostApiKey: "",
       });
-      if (!impersonatedWallet) {
-        return { error: "No impersonated wallet set" };
+      if (!impersonatedAddress) {
+        return { error: "No impersonated address set" };
       }
-      if (blockfrostCache.utxos[impersonatedWallet]) {
-        return { utxos: blockfrostCache.utxos[impersonatedWallet] };
+      if (blockfrostCache.utxos[impersonatedAddress]) {
+        return { utxos: blockfrostCache.utxos[impersonatedAddress] };
       }
       let headers: Record<string, string> = {};
       if (Boolean(blockfrostApiKey)) {
@@ -192,10 +192,10 @@ async function handleRequest(request: any) {
         headers,
       };
 
-      const blockfrostUrl = impersonatedWallet?.startsWith("addr_test")
+      const blockfrostUrl = impersonatedAddress?.startsWith("addr_test")
         ? "https://cardano-preview.blockfrost.io"
         : "https://cardano-mainnet.blockfrost.io";
-      const stakeKey = stakeKeyFromAddress(impersonatedWallet);
+      const stakeKey = stakeKeyFromAddress(impersonatedAddress);
 
       // We get all the addresses based on the stake key.
       const res = await fetch(
@@ -261,7 +261,7 @@ async function handleRequest(request: any) {
         };
       });
 
-      blockfrostCache.utxos[impersonatedWallet] = utxosWithAssets;
+      blockfrostCache.utxos[impersonatedAddress] = utxosWithAssets;
       return {
         utxos: utxosWithAssets,
       };

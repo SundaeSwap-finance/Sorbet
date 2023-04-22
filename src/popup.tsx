@@ -20,7 +20,7 @@ const theme = createTheme();
 const Popup = () => {
   const [view, setView] = useState<EView>(EView.OVERRIDE);
   const [walletType, setWalletType] = useState<EWalletType>(EWalletType.IMPERSONATE);
-  const [impersonateAddress, setImpersonateAddress] = useState<string>("");
+  const [impersonatedAddress, setImpersonateAddress] = useState<string>("");
   const [wrapWallet, setWrapWallet] = useState<string>("none");
   const [overrideWallet, setOverrideWallet] = useState<string>("none");
   const [isOverridden, setIsOverridden] = useState<Boolean>(false);
@@ -30,7 +30,7 @@ const Popup = () => {
       ["impersonatedAddress", "walletType", "wrapWallet", "overrideWallet"],
       function (result) {
         setWalletType(result.walletType ?? walletType);
-        setImpersonateAddress(result.impersonatedAddress ?? impersonateAddress);
+        setImpersonateAddress(result.impersonatedAddress ?? impersonatedAddress);
         setWrapWallet(result.wrapWallet ?? wrapWallet);
         setOverrideWallet(result.overrideWallet ?? overrideWallet);
       }
@@ -56,13 +56,13 @@ const Popup = () => {
   };
 
   const clearImpersonateWallet = () => {
-    chrome.storage.sync.set({ impersonatedWallet: "" }, function () {
+    chrome.storage.sync.set({ impersonatedAddress: "" }, function () {
       setImpersonateAddress("");
     });
   };
 
   const updateImpersonatedWallet = (newValue: string) => {
-    chrome.storage.sync.set({ impersonatedWallet: newValue }, function () {
+    chrome.storage.sync.set({ impersonatedAddress: newValue }, function () {
       setImpersonateAddress(newValue ?? "");
     });
   };
@@ -126,11 +126,11 @@ const Popup = () => {
                   <TextField
                     label="Impersonated Address"
                     fullWidth
-                    value={impersonateAddress}
+                    value={impersonatedAddress}
                     type="text"
                     onChange={(e) => updateImpersonatedWallet(e.target.value)}
                   />
-                  {impersonateAddress && (
+                  {impersonatedAddress && (
                     <Button style={{ marginTop: 2 }} onClick={clearImpersonateWallet}>
                       Clear
                     </Button>
