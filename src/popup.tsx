@@ -14,6 +14,7 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 import { InputLabel, Stack, ToggleButton, ToggleButtonGroup, Switch } from "@mui/material";
 import { EView, EWalletType } from "./types";
 import { WalletSelect } from "./components/wallet-select";
+import { getFromStorage } from "./utils/storage";
 
 const theme = createTheme();
 
@@ -61,11 +62,50 @@ const Popup = () => {
     });
   };
 
+  const lookupHandle = async (handle: string) => {
+    const { blockfrostApiKey } = await getFromStorage("blockfrostApiKey");
+    let headers: Record<string, string> = {};
+    if (Boolean(blockfrostApiKey)) {
+      headers.project_id = blockfrostApiKey;
+    }
+
+    let fetchParams = {
+      method: "GET",
+      headers,
+    };
+
+    // TODO: preview support
+    const blockfrostUrl = "https://cardano-mainnet.blockfrost.io";
+
+    const policyId = "f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a"
+    const handleHex = Buffer.from(handle).toString("hex");
+
+    const res = await fetch(
+      new URL(`/api/v0/assets/${policyId}${handleHex}/addresses`, blockfrostUrl),
+      fetchParams
+    );
+    const addresses = await res.json();
+    if (addresses.length > 1) {
+      console.log("Found multiple addresses for handle", handle);
+      return undefined;
+    } else {
+      console.log("Found address for handle", handle, addresses[0]);
+      return addresses[0].address;
+    }
+  }
   const updateImpersonatedWallet = (newValue: string) => {
     chrome.storage.sync.set({ impersonatedAddress: newValue }, function () {
       setImpersonateAddress(newValue ?? "");
     });
   };
+  const finalizeImpersonatedWallet = async (newValue: string) => {
+    if (newValue.startsWith("$")) {
+      console.log("looking up handle", newValue)
+      newValue = await lookupHandle(newValue.slice(1));
+    }
+    updateImpersonatedWallet(newValue);
+  };
+
 
   return (
     <ThemeProvider theme={theme}>
@@ -129,6 +169,7 @@ const Popup = () => {
                     value={impersonatedAddress}
                     type="text"
                     onChange={(e) => updateImpersonatedWallet(e.target.value)}
+                    onBlur={(e) => finalizeImpersonatedWallet(e.target.value)}
                   />
                   {impersonatedAddress && (
                     <Button style={{ marginTop: 2 }} onClick={clearImpersonateWallet}>
