@@ -8,7 +8,6 @@ const Options = () => {
   useEffect(() => {
     chrome.storage.sync.get(
       {
-        blockfrostUrl: "",
         blockfrostApiKey: ""
       },
       (items) => {

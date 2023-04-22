@@ -116,6 +116,9 @@ async function handleRequest(request: any) {
           fetchParams
         );
         const addresses = await res.json();
+        if (addresses.length === 0) {
+          break;
+        }
         const pageData = await Promise.all(
           Object.values<{ address: string }>(addresses).map(
             async ({ address }: { address: string }) => {
@@ -124,7 +127,6 @@ async function handleRequest(request: any) {
                 fetchParams
               );
               const { amount }: { amount: Quantity[] } = await res.json();
-              console.log("amount", address, amount);
               let ada: Quantity[] = [];
               let assets: Quantity[] = [];
 
@@ -141,21 +143,18 @@ async function handleRequest(request: any) {
             }
           )
         );
-        if (pageData.length <= 0) {
-          break;
-        }
         allData.push(...pageData);
         page += 1;
       }
 
       // We fold all the asset data up into a single array.
       const balance = allData.reduce((acc, { ada, assets }) => {
-        acc.coin = ada
+        acc.coin = (Number(acc.coin ?? 0) + ada
           .reduce((total, { quantity }) => {
             total += Number(quantity);
             return total;
           }, 0)
-          .toString();
+        ).toString();
 
         if (assets) {
           if (!acc?.multi_assets) {

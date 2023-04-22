@@ -21,7 +21,7 @@ const theme = createTheme();
 const Popup = () => {
   const [view, setView] = useState<EView>(EView.OVERRIDE);
   const [walletType, setWalletType] = useState<EWalletType>(EWalletType.IMPERSONATE);
-  const [impersonatedAddress, setImpersonateAddress] = useState<string>("");
+  const [impersonatedAddress, setImpersonatedAddress] = useState<string>("");
   const [wrapWallet, setWrapWallet] = useState<string>("none");
   const [overrideWallet, setOverrideWallet] = useState<string>("none");
   const [isOverridden, setIsOverridden] = useState<Boolean>(false);
@@ -31,9 +31,13 @@ const Popup = () => {
       ["impersonatedAddress", "walletType", "wrapWallet", "overrideWallet"],
       function (result) {
         setWalletType(result.walletType ?? walletType);
-        setImpersonateAddress(result.impersonatedAddress ?? impersonatedAddress);
+        setImpersonatedAddress(result.impersonatedAddress ?? impersonatedAddress);
         setWrapWallet(result.wrapWallet ?? wrapWallet);
         setOverrideWallet(result.overrideWallet ?? overrideWallet);
+        if (result.overrideWallet !== 'none') {
+          console.log('setOverridden')
+          setIsOverridden(true);
+        }
       }
     );
   }, []);
@@ -51,14 +55,23 @@ const Popup = () => {
   };
 
   const updateOverrideWallet = (newValue: string) => {
+    console.log('overriding wallet to', newValue)
     chrome.storage.sync.set({ overrideWallet: newValue }, function () {
+      console.log('persisted to sync', newValue)
       setOverrideWallet(newValue ?? "");
     });
   };
 
+  const updateIsOverridden = (newValue: boolean) => {
+    if (!newValue) {
+      updateOverrideWallet('none');
+    }
+    setIsOverridden(newValue);
+  };
+
   const clearImpersonateWallet = () => {
     chrome.storage.sync.set({ impersonatedAddress: "" }, function () {
-      setImpersonateAddress("");
+      setImpersonatedAddress("");
     });
   };
 
@@ -95,7 +108,7 @@ const Popup = () => {
   }
   const updateImpersonatedWallet = (newValue: string) => {
     chrome.storage.sync.set({ impersonatedAddress: newValue }, function () {
-      setImpersonateAddress(newValue ?? "");
+      setImpersonatedAddress(newValue ?? "");
     });
   };
   const finalizeImpersonatedWallet = async (newValue: string) => {
@@ -191,7 +204,7 @@ const Popup = () => {
           }}
         >
           <InputLabel id="is-override">Override Wallet?</InputLabel>
-          <Switch value={isOverridden} onChange={(e) => setIsOverridden(e.target.checked)} />
+          <Switch checked={Boolean(isOverridden)} onChange={(e) => updateIsOverridden(e.target.checked)} />
         </Box>
         {isOverridden && (
           <WalletSelect label="" wallet={overrideWallet} onChange={updateOverrideWallet} />
