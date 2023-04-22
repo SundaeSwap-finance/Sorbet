@@ -107,36 +107,46 @@ async function handleRequest(request: any) {
         : "https://cardano-mainnet.blockfrost.io";
       const stakeKey = stakeKeyFromAddress(impersonatedAddress);
 
-      // We get all the addresses based on the stake key.
-      const res = await fetch(
-        new URL(`/api/v0/accounts/${stakeKey}/addresses`, blockfrostUrl),
-        fetchParams
-      );
-      const addresses = await res.json();
-      const allData = await Promise.all(
-        Object.values<{ address: string }>(addresses).map(
-          async ({ address }: { address: string }) => {
-            const res = await fetch(
-              new URL(`/api/v0/addresses/${address}`, blockfrostUrl),
-              fetchParams
-            );
-            const { amount }: { amount: Quantity[] } = await res.json();
-            let ada: Quantity[] = [];
-            let assets: Quantity[] = [];
+      const allData: { ada: Quantity[], assets: Quantity[] }[] = [];
+      let page = 1;
+      while(true) {
+        // We get all the addresses based on the stake key.
+        const res = await fetch(
+          new URL(`/api/v0/accounts/${stakeKey}/addresses?page=${page}`, blockfrostUrl),
+          fetchParams
+        );
+        const addresses = await res.json();
+        const pageData = await Promise.all(
+          Object.values<{ address: string }>(addresses).map(
+            async ({ address }: { address: string }) => {
+              const res = await fetch(
+                new URL(`/api/v0/addresses/${address}`, blockfrostUrl),
+                fetchParams
+              );
+              const { amount }: { amount: Quantity[] } = await res.json();
+              console.log("amount", address, amount);
+              let ada: Quantity[] = [];
+              let assets: Quantity[] = [];
 
-            amount?.forEach((asset) => {
-              if (asset.unit === "lovelace") {
-                ada.push(asset);
-                return;
-              }
+              amount?.forEach((asset) => {
+                if (asset.unit === "lovelace") {
+                  ada.push(asset);
+                  return;
+                }
 
-              assets.push(asset);
-            });
+                assets.push(asset);
+              });
 
-            return { ada, assets };
-          }
-        )
-      );
+              return { ada, assets };
+            }
+          )
+        );
+        if (pageData.length <= 0) {
+          break;
+        }
+        allData.push(...pageData);
+        page += 1;
+      }
 
       // We fold all the asset data up into a single array.
       const balance = allData.reduce((acc, { ada, assets }) => {
@@ -197,25 +207,34 @@ async function handleRequest(request: any) {
         : "https://cardano-mainnet.blockfrost.io";
       const stakeKey = stakeKeyFromAddress(impersonatedAddress);
 
-      // We get all the addresses based on the stake key.
-      const res = await fetch(
-        new URL(`/api/v0/accounts/${stakeKey}/addresses`, blockfrostUrl),
-        fetchParams
-      );
-      const addresses = await res.json();
-      const allData = await Promise.all(
-        Object.values<{ address: string }>(addresses).map(
-          async ({ address }: { address: string }) => {
-            const res = await fetch(
-              new URL(`/api/v0/addresses/${address}/utxos`, blockfrostUrl),
-              fetchParams
-            );
-            const utxos: any = await res.json();
+      let page = 1;
+      let allData: any[] = [];
+      while(true) {
+        // We get all the addresses based on the stake key.
+        const res = await fetch(
+          new URL(`/api/v0/accounts/${stakeKey}/addresses?page=${page}`, blockfrostUrl),
+          fetchParams
+        );
+        const addresses = await res.json();
+        const pageData = await Promise.all(
+          Object.values<{ address: string }>(addresses).map(
+            async ({ address }: { address: string }) => {
+              const res = await fetch(
+                new URL(`/api/v0/addresses/${address}/utxos`, blockfrostUrl),
+                fetchParams
+              );
+              const utxos: any = await res.json();
 
-            return utxos;
-          }
-        )
-      );
+              return utxos;
+            }
+          )
+        );
+        if (pageData.length <= 0) {
+          break;
+        }
+        page += 1;
+        allData.push(...pageData);
+      }
       // We flatten all utxos into a single array
       const utxos = allData.flat();
       // Rencode utxos from blockfrost style unit/quantity tuples, to coin / multiasset objects
