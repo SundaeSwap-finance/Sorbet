@@ -26,6 +26,43 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true;
 });
 
+let rateLimiter = Promise.resolve();
+
+async function callBlockfrost(mainnet: Boolean, path: string, params: Record<string, string> = {}): Promise<any> {
+  await rateLimiter;
+
+  const { blockfrostApiKey } = await getFromStorage({ blockfrostApiKey: "" });
+  
+  const blockfrostUrl = mainnet
+    ? "https://cardano-mainnet.blockfrost.io"
+    : "https://cardano-preview.blockfrost.io";
+  const usedAddressesUrl = new URL(path, blockfrostUrl);
+  for(const [key, value] of Object.entries(params)) {
+    usedAddressesUrl.searchParams.append(key, value);
+  }
+
+  let headers: Record<string, string> = {};
+  if (blockfrostApiKey) {
+    headers.project_id = blockfrostApiKey;
+  }
+  
+  let fetchParams = {
+    method: "GET",
+    headers,
+  };
+
+  const res = await fetch(usedAddressesUrl, fetchParams);
+
+  if (res.status === 409) {
+    rateLimiter = new Promise((resolve) => {
+      setTimeout(resolve, 1000 / 10);
+    });
+    return callBlockfrost(mainnet, path, params);
+  } else {
+    return res.json();
+  }
+}
+
 async function handleRequest(request: any) {
   switch (request.action) {
     case "query_walletConfig": {
@@ -43,9 +80,8 @@ async function handleRequest(request: any) {
       };
     }
     case "request_getUsedAddresses": {
-      const { impersonatedAddress, blockfrostApiKey } = await getFromStorage({
+      const { impersonatedAddress } = await getFromStorage({
         impersonatedAddress: "",
-        blockfrostApiKey: "",
       });
       if (!impersonatedAddress) {
         return { error: "No impersonated address set" };
@@ -54,24 +90,12 @@ async function handleRequest(request: any) {
         return { addresses: blockfrostCache.usedAddresses[impersonatedAddress] };
       }
 
-      let headers: Record<string, string> = {};
-      if (blockfrostApiKey) {
-        headers.project_id = blockfrostApiKey;
-      }
-
-      let fetchParams = {
-        method: "GET",
-        headers,
-      };
-      const blockfrostUrl = impersonatedAddress?.startsWith("addr_test")
-        ? "https://cardano-preview.blockfrost.io"
-        : "https://cardano-mainnet.blockfrost.io";
       const stakeKey = stakeKeyFromAddress(impersonatedAddress);
-      const usedAddressesUrl = new URL(`/api/v0/accounts/${stakeKey}/addresses`, blockfrostUrl);
-      usedAddressesUrl.searchParams.set("count", (request?.paginate?.limit ?? 100).toString());
-      usedAddressesUrl.searchParams.set("page", (request?.paginate?.page ?? 1).toString());
-      const res = await fetch(usedAddressesUrl, fetchParams);
-      const addrs = await res.json();
+      const addrs = await callBlockfrost(!impersonatedAddress?.startsWith("addr_test"), `/api/v0/accounts/${stakeKey}/addresses`, {
+        count: (request?.paginate?.limit ?? 100).toString(),
+        page:  (request?.paginate?.page ?? 1).toString(),
+      });
+      
       const addresses = addrs.map(({ address }: { address: string }) => {
         return address;
       });
@@ -82,9 +106,8 @@ async function handleRequest(request: any) {
       };
     }
     case "request_getBalance": {
-      const { impersonatedAddress, blockfrostApiKey } = await getFromStorage({
+      const { impersonatedAddress } = await getFromStorage({
         impersonatedAddress: "",
-        blockfrostApiKey: "",
       });
       if (!impersonatedAddress) {
         return { error: "No impersonated address set" };
@@ -92,41 +115,22 @@ async function handleRequest(request: any) {
       if (blockfrostCache.balance[impersonatedAddress]) {
         return { balance: blockfrostCache.balance[impersonatedAddress] };
       }
-      let headers: Record<string, string> = {};
-      if (Boolean(blockfrostApiKey)) {
-        headers.project_id = blockfrostApiKey;
-      }
 
-      let fetchParams = {
-        method: "GET",
-        headers,
-      };
-
-      const blockfrostUrl = impersonatedAddress?.startsWith("addr_test")
-        ? "https://cardano-preview.blockfrost.io"
-        : "https://cardano-mainnet.blockfrost.io";
+      const mainnet = !impersonatedAddress?.startsWith("addr_test")
       const stakeKey = stakeKeyFromAddress(impersonatedAddress);
 
       const allData: { ada: Quantity[], assets: Quantity[] }[] = [];
       let page = 1;
       while(true) {
         // We get all the addresses based on the stake key.
-        const res = await fetch(
-          new URL(`/api/v0/accounts/${stakeKey}/addresses?page=${page}`, blockfrostUrl),
-          fetchParams
-        );
-        const addresses = await res.json();
+        const addresses = await callBlockfrost(mainnet, `/api/v0/accounts/${stakeKey}/addresses?page=${page}`);
         if (addresses.length === 0) {
           break;
         }
         const pageData = await Promise.all(
           Object.values<{ address: string }>(addresses).map(
             async ({ address }: { address: string }) => {
-              const res = await fetch(
-                new URL(`/api/v0/addresses/${address}`, blockfrostUrl),
-                fetchParams
-              );
-              const { amount }: { amount: Quantity[] } = await res.json();
+              const { amount }: { amount: Quantity[] } = await callBlockfrost(mainnet, `/api/v0/addresses/${address}`);
               let ada: Quantity[] = [];
               let assets: Quantity[] = [];
 
@@ -183,7 +187,6 @@ async function handleRequest(request: any) {
     case "request_getUTXOs": {
       const { impersonatedAddress, blockfrostApiKey } = await getFromStorage({
         impersonatedAddress: "",
-        blockfrostApiKey: "",
       });
       if (!impersonatedAddress) {
         return { error: "No impersonated address set" };
@@ -191,39 +194,19 @@ async function handleRequest(request: any) {
       if (blockfrostCache.utxos[impersonatedAddress]) {
         return { utxos: blockfrostCache.utxos[impersonatedAddress] };
       }
-      let headers: Record<string, string> = {};
-      if (Boolean(blockfrostApiKey)) {
-        headers.project_id = blockfrostApiKey;
-      }
 
-      let fetchParams = {
-        method: "GET",
-        headers,
-      };
-
-      const blockfrostUrl = impersonatedAddress?.startsWith("addr_test")
-        ? "https://cardano-preview.blockfrost.io"
-        : "https://cardano-mainnet.blockfrost.io";
+      const mainnet = !impersonatedAddress?.startsWith("addr_test");
       const stakeKey = stakeKeyFromAddress(impersonatedAddress);
 
       let page = 1;
       let allData: any[] = [];
       while(true) {
         // We get all the addresses based on the stake key.
-        const res = await fetch(
-          new URL(`/api/v0/accounts/${stakeKey}/addresses?page=${page}`, blockfrostUrl),
-          fetchParams
-        );
-        const addresses = await res.json();
+        const addresses = await callBlockfrost(mainnet, `/api/v0/accounts/${stakeKey}/addresses?page=${page}`);
         const pageData = await Promise.all(
           Object.values<{ address: string }>(addresses).map(
             async ({ address }: { address: string }) => {
-              const res = await fetch(
-                new URL(`/api/v0/addresses/${address}/utxos`, blockfrostUrl),
-                fetchParams
-              );
-              const utxos: any = await res.json();
-
+              const utxos: any = await callBlockfrost(mainnet, `/api/v0/addresses/${address}/utxos`);
               return utxos;
             }
           )

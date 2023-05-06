@@ -67,7 +67,7 @@ export class ImpersonatedWallet implements TConnectedApi {
         multiAsset.get(policyIdBuffer)?.set(assetNameBuffer, asset);
       }
     }
-    const encoded = cbor.encode([Number(balance.coin), multiAsset]).toString('hex');
+    const encoded = (cbor.encodeOne([Number(balance.coin), multiAsset], { highWaterMark: 65535 })).toString('hex');
     return encoded;
   }
 
@@ -166,10 +166,12 @@ export class ImpersonatedWallet implements TConnectedApi {
   }
 
   async signTx(tx: string, partialSign?: boolean | undefined): Promise<string> {
+    console.log("Sorbet: asked to sign ", tx)
     return "a1008182582078b0eff557a5468f74ca5cc03a55ad3f9310568a037f9b295360b9e9316c953d5840ca48874aba63b221ab7ee77763ea7de003d06cade0d606b83f1563d9342bb4dbc252a174565c641f220baa90a436277a9d11ef7170f04303b089bb4013612802";
   }
 
   async submitTx(tx: string): Promise<string> {
+    console.log("Sorbet: asked to submit ", tx)
     return "beefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef";
   }
 }
