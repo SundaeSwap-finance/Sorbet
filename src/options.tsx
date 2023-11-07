@@ -2,16 +2,24 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const Options = () => {
-  const [blockfrostApiKey, setBlockfrostApiKey] = useState<string>("");
+  const [blockfrostMainnetApiKey, setBlockfrostMainnetApiKey] = useState<string>("");
+  const [blockfrostPreviewApiKey, setBlockfrostPreviewApiKey] = useState<string>("");
   const [status, setStatus] = useState<string>("");
 
   useEffect(() => {
     chrome.storage.sync.get(
       {
-        blockfrostApiKey: ""
+        blockfrostApiKey: undefined,
+        blockfrostMainnetApiKey: "",
+        blockfrostPreviewApiKey: ""
       },
       (items) => {
-        setBlockfrostApiKey(items.blockfrostApiKey);
+        if (items.blockfrostApiKey) {
+          setBlockfrostMainnetApiKey(items.blockfrostApiKey);
+        } else {
+          setBlockfrostMainnetApiKey(items.blockfrostMainnetApiKey);
+        }
+        setBlockfrostPreviewApiKey(items.blockfrostPreviewApiKey);
       }
     );
   }, []);
@@ -20,7 +28,9 @@ const Options = () => {
     // Saves options to chrome.storage.sync.
     chrome.storage.sync.set(
       {
-        blockfrostApiKey
+        blockfrostApiKey: undefined,
+        blockfrostMainnetApiKey,
+        blockfrostPreviewApiKey
       },
       () => {
         // Update status to let user know options were saved.
@@ -37,10 +47,19 @@ const Options = () => {
     <>
       <div>
         <label>
-          Blockfrost API Key: <input
+          Blockfrost Mainnet API Key: <input
             type="url"
-            value={blockfrostApiKey}
-            onChange={(event) => setBlockfrostApiKey(event.currentTarget.value)}
+            value={blockfrostMainnetApiKey}
+            onChange={(event) => setBlockfrostMainnetApiKey(event.currentTarget.value)}
+          />
+        </label>
+      </div>
+      <div>
+        <label>
+          Blockfrost Preview API Key: <input
+            type="url"
+            value={blockfrostPreviewApiKey}
+            onChange={(event) => setBlockfrostPreviewApiKey(event.currentTarget.value)}
           />
         </label>
       </div>

@@ -9,7 +9,7 @@ export const getNetworkPrefix = (address: string) => {
 
 export const stakeKeyFromAddress = (address: string) =>
   bech32.encode(
-    "stake",
+    address.startsWith("addr_test") ? "stake_test" : "stake",
     bech32.toWords(
       Buffer.from(
         `${getNetworkPrefix(address)}${addressToCredentials(address)?.stakingKeyHash}`,

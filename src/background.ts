@@ -31,7 +31,11 @@ let rateLimiter = Promise.resolve();
 async function callBlockfrost(mainnet: Boolean, path: string, params: Record<string, string> = {}): Promise<any> {
   await rateLimiter;
 
-  const { blockfrostApiKey } = await getFromStorage({ blockfrostApiKey: "" });
+  const { blockfrostApiKey, blockfrostMainnetApiKey, blockfrostPreviewApiKey } = await getFromStorage({
+    blockfrostApiKey: undefined,
+    blockfrostMainnetApiKey: "",
+    blockfrostPreviewApiKey: "",
+  });
   
   const blockfrostUrl = mainnet
     ? "https://cardano-mainnet.blockfrost.io"
@@ -41,12 +45,10 @@ async function callBlockfrost(mainnet: Boolean, path: string, params: Record<str
     usedAddressesUrl.searchParams.append(key, value);
   }
 
-  let headers: Record<string, string> = {};
-  if (blockfrostApiKey) {
-    headers.project_id = blockfrostApiKey;
-  }
+  const headers: Record<string, string> = {};
+  headers.project_id = mainnet ? (blockfrostApiKey ?? blockfrostMainnetApiKey) : blockfrostPreviewApiKey;
   
-  let fetchParams = {
+  const fetchParams = {
     method: "GET",
     headers,
   };
