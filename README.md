@@ -5,10 +5,13 @@
 The Cardano Developer's Wallet
 
 ## Roadmap
-[x] Impersonate an address, viewing the dApp (roughly) as that user would
-[ ] Wrap a wallet, passing through functionality to an existing wallet
-[ ] Inspect traffic between a dApp and a wallet
-[ ] Return arbitrary data or errors to dApp requests, to test corner cases
+- [x] Impersonate an address, viewing the dApp (roughly) as that user would
+- [x] Wrap a wallet, passing through functionality to an existing wallet
+- [ ] Save common addresses in an address book
+- [ ] Add the ability for sites to build Sorbet integrations
+- [ ] CIP-45 capability
+- [ ] Inspect traffic between a dApp and a wallet
+- [ ] Return arbitrary data or errors to dApp requests, to test corner cases
 
 ## Installing
 
