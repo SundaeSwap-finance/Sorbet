@@ -1,3 +1,4 @@
+import { EWalletType } from "./types";
 import { stakeKeyFromAddress } from "./utils/addresses";
 import { getFromStorage } from "./utils/storage";
 
@@ -69,9 +70,8 @@ async function handleRequest(request: any) {
   switch (request.action) {
     case "setAddress": {
       const { address } = request
-      console.log("sorbet.setAddress setting", address)
       chrome.storage.sync.set({ impersonatedAddress: address }, function () {
-        console.log("sorbet.setAddress", address)
+        console.log("Sorbet: wallet address updated:", address)
       });
       return { address }
     }
@@ -89,7 +89,7 @@ async function handleRequest(request: any) {
       ]);
       const network = impersonatedAddress?.startsWith("addr_test") ? 0 : 1;
       return {
-        walletType,
+        walletType: walletType ?? EWalletType.IMPERSONATE,
         wallet,
         impersonatedAddress,
         network,

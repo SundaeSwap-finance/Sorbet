@@ -36,7 +36,7 @@ try {
             ? console.log(`Sorbet: wallet injected (overriding ${wallet}).`)
             : console.log(`Sorbet: wallet injected (wrapping ${wallet}).`);
         }
-      } else if (walletType === EWalletType.IMPERSONATE && impersonatedAddress) {
+      } else if (walletType === EWalletType.IMPERSONATE) {
         try {
           let instance: ImpersonatedWallet;
           window.cardano["sorbet"] = {
@@ -52,7 +52,7 @@ try {
             },
             setAddress,
           };
-          console.log(`Sorbet: wallet injected (impersonating ${impersonatedAddress}).`);
+          console.log(`Sorbet: wallet injected (impersonating: ${impersonatedAddress ?? "no wallet address set"}).`);
         } catch (e) {
           console.error("Sorbet: impersonate wallet initialization error");
           console.log(e);

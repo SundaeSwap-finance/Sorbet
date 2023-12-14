@@ -15,9 +15,11 @@ import { AddressAutoComplete, AddressBook, autocompleteThemeOverrides, isValidAd
 
 const theme = createTheme({ ...autocompleteThemeOverrides });
 
+const DEFAULT_WALLET_TYPE = EWalletType.IMPERSONATE
+
 const Popup = () => {
   const [view, setView] = useState<EView>(EView.OVERRIDE);
-  const [walletType, setWalletType] = useState<EWalletType>(EWalletType.IMPERSONATE);
+  const [walletType, setWalletType] = useState<EWalletType>(DEFAULT_WALLET_TYPE);
   const [impersonatedAddress, _setImpersonatedAddress] = useState<string>("");
   const [impersonatedAddressIsValid, setImpersonatedAddressIsValid] = useState(false);
   const setImpersonatedAddress = (a:string) => {
