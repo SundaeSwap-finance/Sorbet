@@ -67,6 +67,14 @@ async function callBlockfrost(mainnet: Boolean, path: string, params: Record<str
 
 async function handleRequest(request: any) {
   switch (request.action) {
+    case "setAddress": {
+      const { address } = request
+      console.log("sorbet.setAddress setting", address)
+      chrome.storage.sync.set({ impersonatedAddress: address }, function () {
+        console.log("sorbet.setAddress", address)
+      });
+      return { address }
+    }
     case "query_walletConfig": {
       const { walletType, impersonatedAddress, wallet } = await getFromStorage([
         "wallet",
@@ -97,8 +105,7 @@ async function handleRequest(request: any) {
         count: (request?.paginate?.limit ?? 100).toString(),
         page:  (request?.paginate?.page ?? 1).toString(),
       });
-      
-      const addresses = addrs.map(({ address }: { address: string }) => {
+      const addresses = addrs?.map(({ address }: { address: string }) => {
         return address;
       });
       blockfrostCache.usedAddresses[impersonatedAddress] = addresses;
