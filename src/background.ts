@@ -75,6 +75,12 @@ async function handleRequest(request: any) {
       });
       return { address }
     }
+    case "query_shouldScanForAddresses": {
+      const { shouldScanForAddresses } = await getFromStorage([
+        "shouldScanForAddresses",
+      ]);
+      return { shouldScanForAddresses };
+    }
     case "query_walletConfig": {
       const { walletType, impersonatedAddress, wallet } = await getFromStorage([
         "wallet",

@@ -54,16 +54,25 @@ try {
           };
           console.log(`Sorbet: wallet injected (impersonating ${impersonatedAddress}).`);
         } catch (e) {
+          console.error("Sorbet: impersonate wallet initialization error");
           console.log(e);
         }
       } else {
         console.log(`Sorbet: no wallet initiated.`);
       }
     }
-    // artificial delay to wait for js to fully load
-    setTimeout(() => {
-      annotateAddressesInDom()
-    }, 2500)
+
+    let { shouldScanForAddresses } = await sendMessageToBackground({
+      action: "query_shouldScanForAddresses",
+    });
+    if (shouldScanForAddresses) {
+      // artificial delay to wait for js to fully load
+      setTimeout(() => {
+        annotateAddressesInDom()
+      }, 2500)
+    } else {
+      console.log("Sorbet: address scanning disabled, this can be changed in the extension options")
+    }
 
     console.log("Sorbet: done.");
   });
@@ -128,14 +137,14 @@ try {
     return showAddressMenu
   }
   const annotateAddressesInDom = () => {
-    console.log("starting scan for wallet addresses..")
+    console.log("Sorbet: starting scan for wallet addresses..")
     const showAddressMenu = createAddressPopup()
     let found = 0
     document.querySelectorAll("div, span").forEach((d) => {
       if (d.childNodes[0]?.nodeValue?.includes("addr")) {
         const splitNodeVal = d.childNodes[0].nodeValue.split(" ").reduce((arr, o, _i) => {
           if (isValidAddress(o)) {
-            console.log("found address in page, annotating..", o)
+            console.log("Sorbet: found address in page, annotating..", o)
             found++
             const el = document.createElement('span')
             el.className = 'sorbet_address'
@@ -154,8 +163,9 @@ try {
         d.append(...splitNodeVal)
       }
     })
-    console.log("finished scanning for wallet addresses. Found ", found, " addresses")
+    console.log("Sorbet: finished scanning for wallet addresses. Found ", found, " addresses")
   }
 } catch (e) {
+  console.error("Sorbet: initialization error");
   console.log(e);
 }
