@@ -8,10 +8,12 @@ import {
 } from "@mui/material";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { createRoot } from "react-dom/client";
-import { WalletSelect } from "./components/wallet-select";
 import { EView, EWalletType } from "./types";
+import { WalletSelect } from "./components/wallet-select";
+import { AddressBook, AddressBookComponent, AddressBookEntry } from "./components/address-book";
+import { AddressAutoComplete, autocompleteThemeOverrides } from "./components/address-autocomplete";
 import { getFromStorage } from "./utils/storage";
-import { AddressAutoComplete, AddressBook, autocompleteThemeOverrides, isValidAddress } from "./components/address-book";
+import { isValidAddress } from "./utils/addresses";
 
 const theme = createTheme({ ...autocompleteThemeOverrides });
 
@@ -21,12 +23,12 @@ const Popup = () => {
   const [view, setView] = useState<EView>(EView.OVERRIDE);
   const [walletType, setWalletType] = useState<EWalletType>(DEFAULT_WALLET_TYPE);
   const [impersonatedAddress, _setImpersonatedAddress] = useState<string>("");
-  const [impersonatedAddressIsValid, setImpersonatedAddressIsValid] = useState(false);
-  const setImpersonatedAddress = (a:string) => {
+  const [impersonatedAddressIsValid, _setImpersonatedAddressIsValid] = useState(false);
+  const setImpersonatedAddress = (a: string) => {
     _setImpersonatedAddress(a)
-    setImpersonatedAddressIsValid(isValidAddress(a));
+    _setImpersonatedAddressIsValid(isValidAddress(a))
   }
-  const [addressBook, setAddressBook] = useState<string[]>([]);
+  const [addressBook, setAddressBook] = useState<AddressBook>([]);
   const [wrapWallet, setWrapWallet] = useState<string>("none");
   const [overrideWallet, setOverrideWallet] = useState<string>("none");
   const [isOverridden, setIsOverridden] = useState<Boolean>(false);
@@ -47,6 +49,20 @@ const Popup = () => {
       }
     );
   }, []);
+
+  useEffect(() => {
+    const storageChangedListener = (changes: {[key: string]: chrome.storage.StorageChange}) => {
+      // console.log("changes", changes); // {key : { newValue: 'value' }}
+      const shouldUpdateState = changes.impersonatedAddress && changes.impersonatedAddress.newValue !== impersonatedAddress
+      if (shouldUpdateState) {
+        setImpersonatedAddress(changes.impersonatedAddress.newValue)
+      }
+    }
+    chrome.storage.onChanged.addListener(storageChangedListener)
+    return () => {
+      chrome.storage.onChanged.removeListener(storageChangedListener);
+    };
+  }, [])
 
   const updateWalletType = (newValue: EWalletType) => {
     chrome.storage.sync.set({ walletType: newValue }, function () {
@@ -124,14 +140,30 @@ const Popup = () => {
     }
     updateImpersonatedWallet(newValue);
   };
-  const addToAddressBook = (newValue: string) => {
-    const newAddressBook = [...new Set([...addressBook, newValue])];
+  const addToAddressBook = (newValue: string): void => {
+    if (addressBook.find(abe => abe.address === newValue))
+      return
+    const newAddressBook = [...addressBook, { address: newValue }];
     chrome.storage.sync.set({ addressBook: newAddressBook }, function () {
       setAddressBook(newAddressBook ?? []);
     });
   };
+  const addOrUpdateAddressBookEntry = (newEntry: AddressBookEntry) => {
+    let newAddressBook = [...addressBook];
+    const found = addressBook.find(abe => abe.address === newEntry.address)
+    if (!found) {
+      newAddressBook.push(newEntry)
+    } else {
+      newAddressBook = newAddressBook.map(abe => 
+        abe.address === newEntry.address ? newEntry : abe
+      )
+    }
+    chrome.storage.sync.set({ addressBook: newAddressBook }, function () {
+      setAddressBook(newAddressBook ?? []);
+    });
+  }
   const removeFromAddressBook = (valueToRemove: string) => {
-    const newAddressBook = [...addressBook].filter(a => a !== valueToRemove);
+    const newAddressBook = [...addressBook].filter(abe => abe.address !== valueToRemove);
     chrome.storage.sync.set({ addressBook: newAddressBook }, function () {
       setAddressBook(newAddressBook ?? []);
     });
@@ -195,9 +227,9 @@ const Popup = () => {
               {EWalletType.IMPERSONATE === walletType ? (
                 <>
                   <AddressAutoComplete {...{
-                    addressBook, impersonatedAddress, impersonatedAddressIsValid, 
+                    addressBook, impersonatedAddress, impersonatedAddressIsValid,
                     updateImpersonatedWallet, finalizeImpersonatedWallet,
-                    addToAddressBook, removeFromAddressBook
+                    addToAddressBook, removeFromAddressBook, addOrUpdateAddressBookEntry
                   }} />
                   {impersonatedAddress && (
                     <Button style={{ marginTop: 2 }} onClick={clearImpersonateWallet}>
@@ -227,7 +259,7 @@ const Popup = () => {
           <WalletSelect label="" wallet={overrideWallet} onChange={updateOverrideWallet} />
         )}
         {EView.ADDRESS_BOOK === view && (
-          <AddressBook {...{ addressBook, removeFromAddressBook }} />
+          <AddressBookComponent {...{ addressBook, removeFromAddressBook, addOrUpdateAddressBookEntry }} />
         )}
       </Container>
     </ThemeProvider>

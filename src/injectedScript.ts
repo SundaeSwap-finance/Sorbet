@@ -1,6 +1,6 @@
-import { isValidAddress } from "./components/address-book";
 import { ImpersonatedWallet } from "./modules/ImpersonatedWallet.class";
 import { EWalletType } from "./types";
+import { isValidAddress } from "./utils/addresses";
 import { sendMessageToBackground } from "./utils/sendMessageToBackground";
 
 try {
