@@ -13,12 +13,9 @@ export class ImpersonatedWallet implements TConnectedApi {
  public experimental?: TExperimentalApi | undefined;
 
   constructor() {
-    /*
-    const network = getNetworkPrefix(address) === "e0" ? 0 : 1;
-    this.stakeKey = stakeKeyFromAddress(address);
-    this.network = network;
-    this.blockfrostUrl = `https://cardano-${network === 0 ? "preview" : "mainnet"}.blockfrost.io`;
-    */
+
+   // TODO: This is hard-coded to get dApps to work, since we don't need to actually sign valid transactions,
+   // but it'd still be nice to emulate choosing a collateral UTXO from the wallet.
    this.experimental = {
       getCollateral: async () => {
         return [
@@ -78,6 +75,8 @@ export class ImpersonatedWallet implements TConnectedApi {
     return bech32ToHex(impersonatedAddress);
   }
 
+  // TODO: This is hard-coded to get dApps to work, since we don't need to actually sign valid transactions,
+  // but it'd still be nice to emulate choosing a collateral UTXO from the wallet.
   async getCollateral(params: { amount: string }): Promise<string[] | null> {
     return [
       "82825820d060df960efa59b66ac8baedc42c61580128b1c75241ca74ed927708442d5df705825839014476a6f50d917710191e90ecc8e292fefc53dbedb2104837306d4e77c0ff5904e5d29c1d85ef193acbe0c6eb7cddbcf3a0d2a593e96931c41a004c4b40",
@@ -93,6 +92,8 @@ export class ImpersonatedWallet implements TConnectedApi {
     return network;
   }
 
+  // TODO: This is hard-coded to get dApps to work, since we don't need to actually sign valid transactions,
+  // but it'd still be nice to emulate choosing a collateral UTXO from the wallet.
   async getRewardAddresses(): Promise<string[]> {
     return ["e1c0ff5904e5d29c1d85ef193acbe0c6eb7cddbcf3a0d2a593e96931c4"];
   }
@@ -158,6 +159,7 @@ export class ImpersonatedWallet implements TConnectedApi {
     return encodedUTXOs;
   }
 
+  // TODO: This is stubbed out, but it'd be nice to emulate something better here.
   async signData(addr: string, payload: string): Promise<TDataSignature> {
     return {
       key: "",
@@ -165,11 +167,13 @@ export class ImpersonatedWallet implements TConnectedApi {
     };
   }
 
+  // TODO: The response is hard-coded, but it'd be nice to emulate something nicer here.
   async signTx(tx: string, partialSign?: boolean | undefined): Promise<string> {
     console.log("Sorbet: asked to sign ", tx)
     return "a1008182582078b0eff557a5468f74ca5cc03a55ad3f9310568a037f9b295360b9e9316c953d5840ca48874aba63b221ab7ee77763ea7de003d06cade0d606b83f1563d9342bb4dbc252a174565c641f220baa90a436277a9d11ef7170f04303b089bb4013612802";
   }
 
+  // TODO: The response is hard-coded, but it'd be nice to emulate something nicer here.
   async submitTx(tx: string): Promise<string> {
     console.log("Sorbet: asked to submit ", tx)
     return "beefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef";

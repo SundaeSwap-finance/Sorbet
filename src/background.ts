@@ -200,7 +200,7 @@ async function handleRequest(request: any) {
       };
     }
     case "request_getUTXOs": {
-      const { impersonatedAddress, blockfrostApiKey } = await getFromStorage({
+      const { impersonatedAddress } = await getFromStorage({
         impersonatedAddress: "",
       });
       if (!impersonatedAddress) {
