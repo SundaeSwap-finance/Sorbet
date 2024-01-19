@@ -28,7 +28,8 @@ export const AddressAutoComplete = ({
     addToAddressBook, removeFromAddressBook,
     updateImpersonatedWallet, finalizeImpersonatedWallet,
 }: AddressAutoCompleteProps) => {
-    const impersonatedAddressIsInAddressBook = (addressBook.find(abe => abe.address === impersonatedAddress) !== undefined)
+    const impersonatedAddressBookEntry = addressBook.find(abe => abe.address === impersonatedAddress)
+    const impersonatedAddressIsInAddressBook = (impersonatedAddressBookEntry !== undefined)
 
     const addIconToEndAdornment = (endAdornment: ReactElement, icon: ReactElement) => {
         const children = React.Children.toArray(endAdornment.props.children);
@@ -98,6 +99,7 @@ export const AddressAutoComplete = ({
                     />
                 )}
             />
+            {impersonatedAddressBookEntry && <b style={{whiteSpace: "nowrap", overflow: "clip"}}>{impersonatedAddressBookEntry.name ?? "(unamed Address Book entry)"}</b>}
         </>
     )
 }
