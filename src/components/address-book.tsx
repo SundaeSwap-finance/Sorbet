@@ -1,6 +1,9 @@
 import React, { useState } from "react"
-import { Box, Tooltip, IconButton, TextField, ButtonGroup } from "@mui/material"
+import { Box, Tooltip, IconButton, TextField, ButtonGroup, Button, Grid, Snackbar } from "@mui/material"
 import RemoveIcon from "@mui/icons-material/HighlightOff"
+import SetAddressIcon from "@mui/icons-material/RadioButtonUnchecked"
+import CurrentAddressIcon from "@mui/icons-material/RadioButtonChecked"
+import AddAddressIcon from "@mui/icons-material/Add"
 import CopyIcon from "@mui/icons-material/FileCopy"
 import EditIcon from "@mui/icons-material/Edit"
 import SaveIcon from "@mui/icons-material/Save"
@@ -12,15 +15,22 @@ import { isValidAddress } from "../utils/addresses"
 export type AddressBookEntry = { name?: string, address: string }
 export type AddressBook = AddressBookEntry[]
 
-interface AddressBookProps {
+interface AddressBookEntryActions {
+  setImpersonatedAddress: (a: string) => void
+}
+interface AddressBookProps extends AddressBookEntryActions {
   addressBook: AddressBook,
+  impersonatedAddress: string,
   removeFromAddressBook: (a: string) => void,
   addOrUpdateAddressBookEntry: (abe: AddressBookEntry) => void
 }
 
 interface EditMode { i: number, name: string }
+
+/** MAIN AddressBook Component */
 export const AddressBookComponent = (props: AddressBookProps): JSX.Element => {
-  const { addressBook, addOrUpdateAddressBookEntry } = props
+  const { addressBook, impersonatedAddress, setImpersonatedAddress,
+    addOrUpdateAddressBookEntry, } = props
   const [editModes, setEditModes] = useState<EditMode[]>([])
 
   const getEditMode = (i: number): EditMode | undefined => editModes.find(em => em.i === i)
@@ -51,45 +61,70 @@ export const AddressBookComponent = (props: AddressBookProps): JSX.Element => {
     )
     setEditModes(newEditModes)
   }
+  const promptForNewAddressBookEntry = () => {
+    let addr = prompt("Please enter an address to add to the Address Book")
+    if (addr) {
+      if (!isValidAddress(addr)) {
+        confirm("not a valid bech32 address: " + addr + "\n\nPlease verify the address and try again.")
+      } else {
+        addOrUpdateAddressBookEntry({ address: addr })
+      }
+    }
+  }
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        alignItems: "left",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        border: 1,
-        borderColor: 'grey.300',
-        padding: 1,
-        marginBottom: 2,
-      }}
-    >
-      {addressBook.map((abe, i) => {
-        const editMode = getEditMode(i)
-        const editModeName = editMode?.name ?? ""
-        const isInEditMode = editMode !== undefined
-        return (
-          <AddressBookEntryComponent key={i} {...props} {...abe}
-            {...{ i, setIsInEditMode, saveCurrentName, nameInputOnChange, editModeName, isInEditMode }}
-          />)
-      }
-      )}
-    </Box>
+    <>
+      <ButtonGroup>
+        <IconButton onClick={() => promptForNewAddressBookEntry()}>
+          <Tooltip title="Add a New Address" placement="top">
+            <AddAddressIcon />
+          </Tooltip>
+        </IconButton>
+      </ButtonGroup>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "left",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          border: 1,
+          borderColor: 'grey.300',
+          padding: 1,
+          marginBottom: 2,
+        }}
+      >
+        {addressBook.map((abe, i) => {
+          const editMode = getEditMode(i)
+          const editModeName = editMode?.name ?? ""
+          const isInEditMode = editMode !== undefined
+          return (
+            <AddressBookEntryComponent key={i} {...props} {...abe}
+              {...{
+                i, impersonatedAddress,
+                setIsInEditMode, saveCurrentName, nameInputOnChange, editModeName, isInEditMode, setImpersonatedAddress
+              }}
+            />)
+        }
+        )}
+      </Box>
+    </>
   )
 };
 
-const DEFAULT_HALF_N = 16
+const DEFAULT_HALF_N = 14
 const minimize = (s: string, halfN = DEFAULT_HALF_N): JSX.Element => (
   s.length > (halfN * 2) ? <><span>{s.slice(0, halfN)}</span>&hellip;<span>{s.slice(-halfN)}</span></> : <>s</>
 )
-interface AddressBookEntryProps extends AddressBookEntry {
+/** Individual AddressBook Rows */
+interface AddressBookEntryProps extends AddressBookEntry, AddressBookEntryActions {
   i: number,
   isInEditMode: boolean, editModeName: string,
+  impersonatedAddress: string,
   setIsInEditMode: (i: number, newIsInEditMode: boolean, n?: string) => void,
   saveCurrentName: (i: number) => void,
   nameInputOnChange: (i: number, name: string) => void,
   removeFromAddressBook: (a: string) => void,
+  setImpersonatedAddress: (a: string) => void,
 }
 const AddressBookEntryComponent = (props: AddressBookEntryProps): JSX.Element => {
   const { i, name, editModeName, address, isInEditMode, nameInputOnChange } = props
@@ -118,32 +153,68 @@ const AddressBookEntryComponent = (props: AddressBookEntryProps): JSX.Element =>
           onChange={(e) => nameInputOnChange(i, e.currentTarget.value)}
         />
         : <Tooltip title={address}>
-          <div style={{ fontSize: 14, width: '100%' }}>{
-            (name && name != "") ?
-              <>
-                <b>{name.slice(0, Math.min(name.length - 1, DEFAULT_HALF_N))}: </b>
-                {minimize(address, DEFAULT_HALF_N - Math.ceil(Math.min(name.length - 1, DEFAULT_HALF_N) / 2) - 1)}
-              </>
-              : minimize(address)}</div>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "left",
+              flexDirection: "column",
+              overflow: "clip",
+              whiteSpace: "nowrap",
+              fontSize: 14,
+              width: "100%",
+            }}>
+            {(name && name != "") && <div><b>{name}: </b></div>}
+            <div>{minimize(address)}</div>
+          </Box>
         </Tooltip>
       }
       <AddressBookButtons {...props} />
     </Box>
   )
 }
-
+/** Row Action Buttons */
+const autoHideDuration = 900
 interface AddressBookButtonsProps extends AddressBookEntryProps { }
 const AddressBookButtons = ({
   i, address, name,
   isInEditMode, setIsInEditMode,
-  saveCurrentName, removeFromAddressBook
+  saveCurrentName, removeFromAddressBook,
+  setImpersonatedAddress, impersonatedAddress,
 }: AddressBookButtonsProps): JSX.Element => {
+  const [alertMessage, setAlertMessage] = useState<string | undefined>();
+  const openAlert = (m: string) => setAlertMessage(m)
+  const closeAlert = (event: React.SyntheticEvent | Event, reason?: string) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setAlertMessage(undefined)
+  }
   return (
     <ButtonGroup>
+      {address === impersonatedAddress ?
+        <Tooltip title="* Current Address" placement="left">
+          <CurrentAddressIcon style={{ margin: 5 }} />
+        </Tooltip>
+        : <IconButton
+          aria-label="Set as Impersonated Wallet Address"
+          size="small"
+          onClick={() => {
+            setImpersonatedAddress(address)
+            openAlert("Impersonated Address Changed")
+          }}
+        >
+          <Tooltip title={address === impersonatedAddress ? "* Current Address" : "Set impersonated address"} placement="left">
+            <SetAddressIcon />
+          </Tooltip>
+        </IconButton>
+      }
       <IconButton
         aria-label="Copy address to clipboard"
         size="small"
-        onClick={() => navigator.clipboard.writeText(address)}
+        onClick={() => {
+          navigator.clipboard.writeText(address)
+          openAlert("Address copied")
+        }}
       >
         <Tooltip title="Copy" placement="left">
           <CopyIcon />
@@ -181,6 +252,12 @@ const AddressBookButtons = ({
           <RemoveIcon />
         </Tooltip>
       </IconButton>
+      <Snackbar
+        open={alertMessage !== undefined}
+        autoHideDuration={autoHideDuration}
+        onClose={closeAlert}
+        message={alertMessage}
+      />
     </ButtonGroup>
   )
 };

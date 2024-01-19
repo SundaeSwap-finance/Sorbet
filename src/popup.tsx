@@ -208,7 +208,7 @@ const Popup = () => {
             marginTop: 2,
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
+            alignItems: "left",
           }}
         >
           {EView.OVERRIDE === view && (
@@ -259,7 +259,10 @@ const Popup = () => {
           <WalletSelect label="" wallet={overrideWallet} onChange={updateOverrideWallet} />
         )}
         {EView.ADDRESS_BOOK === view && (
-          <AddressBookComponent {...{ addressBook, removeFromAddressBook, addOrUpdateAddressBookEntry }} />
+          <AddressBookComponent {...{ 
+            addressBook, removeFromAddressBook, addOrUpdateAddressBookEntry,
+            setImpersonatedAddress, impersonatedAddress
+          }} />
         )}
       </Container>
     </ThemeProvider>
