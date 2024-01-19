@@ -37,18 +37,18 @@ async function callBlockfrost(mainnet: Boolean, path: string, params: Record<str
     blockfrostMainnetApiKey: "",
     blockfrostPreviewApiKey: "",
   });
-  
+
   const blockfrostUrl = mainnet
     ? "https://cardano-mainnet.blockfrost.io"
     : "https://cardano-preview.blockfrost.io";
   const usedAddressesUrl = new URL(path, blockfrostUrl);
-  for(const [key, value] of Object.entries(params)) {
+  for (const [key, value] of Object.entries(params)) {
     usedAddressesUrl.searchParams.append(key, value);
   }
 
   const headers: Record<string, string> = {};
   headers.project_id = mainnet ? (blockfrostApiKey ?? blockfrostMainnetApiKey) : blockfrostPreviewApiKey;
-  
+
   const fetchParams = {
     method: "GET",
     headers,
@@ -68,6 +68,22 @@ async function callBlockfrost(mainnet: Boolean, path: string, params: Record<str
 
 async function handleRequest(request: any) {
   switch (request.action) {
+    case "addToAddressBook": {
+      console.log("adding to address book")
+      const { address } = request
+      chrome.storage.sync.get(
+        ["addressBook"],
+        function (result) {
+          const addressBook = result.addressBook && Array.isArray(result.addressBook) ? result.addressBook : []
+          if (addressBook.find(abe => abe.address === address))
+            return
+          const newAddressBook = [...addressBook, { address }];
+          chrome.storage.sync.set({ addressBook: newAddressBook }, function () {
+            console.log("Sorbet: address added to address book:", address)
+          });
+        })
+      return { address }
+    }
     case "setAddress": {
       const { address } = request
       chrome.storage.sync.set({ impersonatedAddress: address }, function () {
@@ -109,7 +125,7 @@ async function handleRequest(request: any) {
       const stakeKey = stakeKeyFromAddress(impersonatedAddress);
       const addrs = await callBlockfrost(!impersonatedAddress?.startsWith("addr_test"), `/api/v0/accounts/${stakeKey}/addresses`, {
         count: (request?.paginate?.limit ?? 100).toString(),
-        page:  (request?.paginate?.page ?? 1).toString(),
+        page: (request?.paginate?.page ?? 1).toString(),
       });
       const addresses = addrs?.map(({ address }: { address: string }) => {
         return address;
@@ -136,7 +152,7 @@ async function handleRequest(request: any) {
 
       const allData: { ada: Quantity[], assets: Quantity[] }[] = [];
       let page = 1;
-      while(true) {
+      while (true) {
         // We get all the addresses based on the stake key.
         const addresses = await callBlockfrost(mainnet, `/api/v0/accounts/${stakeKey}/addresses?page=${page}`);
         if (addresses.length === 0) {
@@ -215,7 +231,7 @@ async function handleRequest(request: any) {
 
       let page = 1;
       let allData: any[] = [];
-      while(true) {
+      while (true) {
         // We get all the addresses based on the stake key.
         const addresses = await callBlockfrost(mainnet, `/api/v0/accounts/${stakeKey}/addresses?page=${page}`);
         const pageData = await Promise.all(
