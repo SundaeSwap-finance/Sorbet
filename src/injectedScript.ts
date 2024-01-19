@@ -30,6 +30,7 @@ try {
             return window.cardano[wallet].isEnabled();
           },
           setAddress,
+          addToAddressBook,
         };
         {
           walletType === EWalletType.OVERRIDE
@@ -51,6 +52,7 @@ try {
               return instance instanceof ImpersonatedWallet;
             },
             setAddress,
+            addToAddressBook,
           };
           console.log(`Sorbet: wallet injected (impersonating: ${impersonatedAddress ?? "no wallet address set"}).`);
         } catch (e) {
@@ -82,16 +84,22 @@ try {
   const setAddress = async function (address: string): Promise<void> {
     await sendMessageToBackground({ action: "setAddress", address })
   }
+  /**  expose Add to Address Book functionality to the page. Sends a message to background. */
+  const addToAddressBook = async function (address: string): Promise<void> {
+    await sendMessageToBackground({ action: "addToAddressBook", address })
+  }
   /** create singleton Popup to hold 'Set Address Button'. 
    * return the showPopup function only. */
   const createAddressPopup = (): (a: string, ev: MouseEvent) => void => {
-    let setAddressButton: HTMLButtonElement, addressMenu: HTMLDivElement
+    let setAddressButton: HTMLButtonElement, addressMenu: HTMLDivElement, addToAddressBookButton: HTMLButtonElement
     const ADDRESS_MENU_ID = 'sorbet_address_menu'
-    const ADDRESS_MENU_BUTTON_ID = 'sorbet_address_menu_button'
+    const ADDRESS_MENU_SET_ADDRESS_BUTTON_ID = 'sorbet_address_menu_set_address_button'
+    const ADDRESS_MENU_ADD_TO_ADDRESS_BOOK_BUTTON_ID = 'sorbet_address_menu_add_to_addressbook_button'
     let foundAddressMenu = document.querySelector("#" + ADDRESS_MENU_ID)
     if (foundAddressMenu) {
       addressMenu = foundAddressMenu as HTMLDivElement
       setAddressButton = addressMenu.children[0] as HTMLButtonElement
+      addToAddressBookButton = addressMenu.children[0] as HTMLButtonElement
     } else {
       addressMenu = document.createElement('div')
       addressMenu.id = ADDRESS_MENU_ID
@@ -103,20 +111,37 @@ try {
       addressMenu.style.padding = '6px'
       document.children[document.children.length - 1].append(addressMenu)
       // Create setAddress Button
+      const bgColor = "rgb(59 130 246)"
+      const bgColorOver = "rgb(79 150 256)"
       setAddressButton = document.createElement('button')
-      setAddressButton.id = ADDRESS_MENU_BUTTON_ID
+      setAddressButton.id = ADDRESS_MENU_SET_ADDRESS_BUTTON_ID
       setAddressButton.innerText = "Set Address"
-      setAddressButton.style.backgroundColor = "rgb(59 130 246)"
+      setAddressButton.style.backgroundColor = bgColor
       setAddressButton.style.padding = "4px"
+      setAddressButton.onmouseover = () => setAddressButton.style.backgroundColor=bgColorOver
+      setAddressButton.onmouseout = () => setAddressButton.style.backgroundColor=bgColor
       setAddressButton.onclick = (_e) => {
         setAddress(setAddressButton.dataset?.address ?? "")
       }
       addressMenu.appendChild(setAddressButton)
+      // Create addToAddressBook Button
+      addToAddressBookButton = document.createElement('button')
+      addToAddressBookButton.id = ADDRESS_MENU_ADD_TO_ADDRESS_BOOK_BUTTON_ID
+      addToAddressBookButton.innerText = "Add to Address Book"
+      addToAddressBookButton.style.backgroundColor = bgColor
+      addToAddressBookButton.style.padding = "4px"
+      addToAddressBookButton.onmouseover = () => addToAddressBookButton.style.backgroundColor=bgColorOver
+      addToAddressBookButton.onmouseout = () => addToAddressBookButton.style.backgroundColor=bgColor
+      addToAddressBookButton.onclick = (_e) => {
+        addToAddressBook(addToAddressBookButton.dataset?.address ?? "")
+      }
+      addressMenu.appendChild(addToAddressBookButton)
       /** close popup if event target is neither 1.) a sorbet address link, 2.) the 'set address button' */
       document.onclick = e => {
         if (e.target instanceof HTMLElement) {
           if (e.target.className !== SORBET_ADDRESS_ANNOTATION_CLASSNAME
-            && e.target.className !== ADDRESS_MENU_BUTTON_ID) {
+            && e.target.className !== ADDRESS_MENU_SET_ADDRESS_BUTTON_ID
+            && e.target.className !== ADDRESS_MENU_ADD_TO_ADDRESS_BOOK_BUTTON_ID) {
             addressMenu.style.display = 'none';
           }
         }
@@ -130,7 +155,9 @@ try {
       const top = ev.clientY - 5 + yOffset
       const left = ev.clientX + 5 + xOffset
       setAddressButton.dataset.address = a
-      addressMenu.style.display = 'block'
+      addToAddressBookButton.dataset.address = a
+      addressMenu.style.display = 'flex'
+      addressMenu.style.flexDirection = 'column'
       addressMenu.style.top = top + 'px'
       addressMenu.style.left = left + 'px'
     }
