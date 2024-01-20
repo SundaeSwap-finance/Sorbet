@@ -124,7 +124,6 @@ interface AddressBookEntryProps extends AddressBookEntry, AddressBookEntryAction
   saveCurrentName: (i: number) => void,
   nameInputOnChange: (i: number, name: string) => void,
   removeFromAddressBook: (a: string) => void,
-  setImpersonatedAddress: (a: string) => void,
 }
 const AddressBookEntryComponent = (props: AddressBookEntryProps): JSX.Element => {
   const { i, name, editModeName, address, isInEditMode, nameInputOnChange } = props

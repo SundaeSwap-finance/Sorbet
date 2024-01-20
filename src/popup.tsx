@@ -261,8 +261,10 @@ const Popup = () => {
         {EView.ADDRESS_BOOK === view && (
           <AddressBookComponent {...{ 
             addressBook, removeFromAddressBook, addOrUpdateAddressBookEntry,
-            setImpersonatedAddress, impersonatedAddress
-          }} />
+            impersonatedAddress
+          }}
+            setImpersonatedAddress={updateImpersonatedWallet}
+          />
         )}
       </Container>
     </ThemeProvider>
