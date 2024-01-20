@@ -1,5 +1,5 @@
 import React from "react";
-import { InputLabel, MenuItem, Select } from "@mui/material";
+import { MenuItem, TextField } from "@mui/material";
 
 export const WalletSelect = ({
   wallet,
@@ -12,11 +12,10 @@ export const WalletSelect = ({
 }) => {
   return (
     <div style={{ marginBottom: 10, width: "100%" }}>
-      <InputLabel id="wallet">{label ?? "Wallet"}</InputLabel>
-      <Select
+      <TextField
+        select
         fullWidth
-        labelId="wallet"
-        label={wallet}
+        label={label ?? "Wallet"}
         value={wallet}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -26,7 +25,7 @@ export const WalletSelect = ({
         <MenuItem value="nami">Nami</MenuItem>
         <MenuItem value="typhoncip30">Typhon</MenuItem>
         <MenuItem value="yoroi">Yoroi</MenuItem>
-      </Select>
+      </TextField>
     </div>
   );
 };

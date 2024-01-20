@@ -1,25 +1,36 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+interface IOptions {
+  blockfrostApiKey?: string,
+  blockfrostMainnetApiKey: string, blockfrostPreviewApiKey: string, 
+  shouldScanForAddresses: true,
+}
+export const defaultOptions: IOptions = {
+  blockfrostApiKey: undefined,
+  blockfrostMainnetApiKey: "",
+  blockfrostPreviewApiKey: "",
+  shouldScanForAddresses: true
+}
+
 const Options = () => {
   const [blockfrostMainnetApiKey, setBlockfrostMainnetApiKey] = useState<string>("");
   const [blockfrostPreviewApiKey, setBlockfrostPreviewApiKey] = useState<string>("");
+  const [shouldScanForAddresses, setShouldScanForAddresses] = useState(true);
   const [status, setStatus] = useState<string>("");
 
   useEffect(() => {
     chrome.storage.sync.get(
-      {
-        blockfrostApiKey: undefined,
-        blockfrostMainnetApiKey: "",
-        blockfrostPreviewApiKey: ""
-      },
-      (items) => {
+      defaultOptions,
+      (it) => {
+        const items = it as IOptions
         if (items.blockfrostApiKey) {
           setBlockfrostMainnetApiKey(items.blockfrostApiKey);
         } else {
           setBlockfrostMainnetApiKey(items.blockfrostMainnetApiKey);
         }
         setBlockfrostPreviewApiKey(items.blockfrostPreviewApiKey);
+        setShouldScanForAddresses(items.shouldScanForAddresses);
       }
     );
   }, []);
@@ -30,7 +41,8 @@ const Options = () => {
       {
         blockfrostApiKey: undefined,
         blockfrostMainnetApiKey,
-        blockfrostPreviewApiKey
+        blockfrostPreviewApiKey,
+        shouldScanForAddresses
       },
       () => {
         // Update status to let user know options were saved.
@@ -60,6 +72,15 @@ const Options = () => {
             type="url"
             value={blockfrostPreviewApiKey}
             onChange={(event) => setBlockfrostPreviewApiKey(event.currentTarget.value)}
+          />
+        </label>
+      </div>
+      <div>
+        <label>
+          Scan Page and Annotate Valid Addresses: <input
+            type="checkbox"
+            checked={shouldScanForAddresses}
+            onChange={(event) => setShouldScanForAddresses(event.currentTarget.checked)}
           />
         </label>
       </div>
