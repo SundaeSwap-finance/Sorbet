@@ -10,7 +10,7 @@ import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { createRoot } from "react-dom/client";
 import { EView, EWalletType } from "./types";
 import { WalletSelect } from "./components/wallet-select";
-import { AddressBook, AddressBookComponent, AddressBookEntry } from "./components/address-book";
+import { AddressBook, AddressBookComponent, AddressBookEntry, parseAddressBookFromStorage } from "./components/address-book";
 import { AddressAutoComplete, autocompleteThemeOverrides } from "./components/address-autocomplete";
 import { getFromStorage } from "./utils/storage";
 import { isValidAddress } from "./utils/addresses";
@@ -39,7 +39,7 @@ const Popup = () => {
       function (result) {
         setWalletType(result.walletType ?? walletType);
         setImpersonatedAddress(result.impersonatedAddress ?? impersonatedAddress);
-        setAddressBook(result.addressBook && Array.isArray(result.addressBook) ? result.addressBook : addressBook);
+        setAddressBook(parseAddressBookFromStorage(result) ?? addressBook);
         setWrapWallet(result.wrapWallet ?? wrapWallet);
         setOverrideWallet(result.overrideWallet ?? overrideWallet);
         if (result.overrideWallet !== 'none') {
