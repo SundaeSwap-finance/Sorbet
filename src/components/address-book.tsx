@@ -17,9 +17,9 @@ export type AddressBook = AddressBookEntry[]
 
 export const parseAddressBookFromStorage = (result: { addressBook?: AddressBook }) : AddressBook | undefined => {
   if (result.addressBook && Array.isArray(result.addressBook)) {
-      return result.addressBook.map(e => {
-          return typeof e ===  'string' ? {address: e} as AddressBookEntry : e
-      })
+      return result.addressBook.map(e => (
+        typeof e ===  'string' ? {address: e} as AddressBookEntry : e
+      ))
   }
   return undefined
 }
