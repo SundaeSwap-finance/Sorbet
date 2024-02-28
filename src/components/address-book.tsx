@@ -15,6 +15,15 @@ import { isValidAddress } from "../utils/addresses"
 export type AddressBookEntry = { name?: string, address: string }
 export type AddressBook = AddressBookEntry[]
 
+export const parseAddressBookFromStorage = (result: { addressBook?: AddressBook }) : AddressBook | undefined => {
+  if (result.addressBook && Array.isArray(result.addressBook)) {
+      return result.addressBook.map(e => {
+          return typeof e ===  'string' ? {address: e} as AddressBookEntry : e
+      })
+  }
+  return undefined
+}
+
 interface AddressBookEntryActions {
   setImpersonatedAddress: (a: string) => void
 }
