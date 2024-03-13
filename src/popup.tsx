@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import DebugIcon from "@mui/icons-material/Analytics";
 import AddressBookIcon from "@mui/icons-material/MenuBook";
+import LogViewerIcon from "@mui/icons-material/DocumentScanner";
 import OverrideIcon from "@mui/icons-material/Settings";
 import {
   InputLabel, Stack, Switch, ToggleButton, ToggleButtonGroup, Box,
@@ -10,10 +11,11 @@ import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { createRoot } from "react-dom/client";
 import { EView, EWalletType } from "./types";
 import { WalletSelect } from "./components/wallet-select";
-import { AddressBook, AddressBookComponent, AddressBookEntry } from "./components/address-book";
+import { AddressBook, AddressBookComponent, AddressBookEntry, parseAddressBookFromStorage } from "./components/address-book";
 import { AddressAutoComplete, autocompleteThemeOverrides } from "./components/address-autocomplete";
 import { getFromStorage } from "./utils/storage";
 import { isValidAddress } from "./utils/addresses";
+import { LogViewerComponent } from "./components/log-viewer";
 
 const theme = createTheme({ ...autocompleteThemeOverrides });
 
@@ -39,7 +41,7 @@ const Popup = () => {
       function (result) {
         setWalletType(result.walletType ?? walletType);
         setImpersonatedAddress(result.impersonatedAddress ?? impersonatedAddress);
-        setAddressBook(result.addressBook && Array.isArray(result.addressBook) ? result.addressBook : addressBook);
+        setAddressBook(parseAddressBookFromStorage(result) ?? addressBook);
         setWrapWallet(result.wrapWallet ?? wrapWallet);
         setOverrideWallet(result.overrideWallet ?? overrideWallet);
         if (result.overrideWallet !== 'none') {
@@ -189,7 +191,7 @@ const Popup = () => {
             value={view}
             exclusive
             fullWidth
-            onChange={(e, value) => setView(value)}
+            onChange={(e, value) => setView(value ?? view ?? EView.OVERRIDE)}
             aria-label="text alignment"
           >
             <ToggleButton value={EView.OVERRIDE} aria-label="right aligned">
@@ -200,6 +202,9 @@ const Popup = () => {
             </ToggleButton>
             <ToggleButton value={EView.ADDRESS_BOOK} aria-label="left aligned">
               <AddressBookIcon />
+            </ToggleButton>
+            <ToggleButton value={EView.LOG_VIEWER} aria-label="left aligned">
+              <LogViewerIcon />
             </ToggleButton>
           </ToggleButtonGroup>
         </Stack>
@@ -265,6 +270,9 @@ const Popup = () => {
           }}
             setImpersonatedAddress={updateImpersonatedWallet}
           />
+        )}
+        {EView.LOG_VIEWER === view && (
+          <LogViewerComponent />
         )}
       </Container>
     </ThemeProvider>
