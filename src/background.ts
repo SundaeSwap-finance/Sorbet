@@ -1,3 +1,5 @@
+import { STORE_WALLET_LOG_ACTION } from "./modules/walletLog";
+import { processWalletLogRequest } from "./modules/walletLogStorageHandler";
 import { EWalletType } from "./types";
 import { stakeKeyFromAddress } from "./utils/addresses";
 import { getFromStorage } from "./utils/storage";
@@ -69,7 +71,7 @@ async function callBlockfrost(mainnet: Boolean, path: string, params: Record<str
 async function handleRequest(request: any) {
   switch (request.action) {
     case "addToAddressBook": {
-      console.log("adding to address book")
+      console.log("Sorbet: adding to address book")
       const { address } = request
       chrome.storage.sync.get(
         ["addressBook"],
@@ -90,6 +92,9 @@ async function handleRequest(request: any) {
         console.log("Sorbet: wallet address updated:", address)
       });
       return { address }
+    }
+    case STORE_WALLET_LOG_ACTION: {
+      return processWalletLogRequest(request)
     }
     case "query_shouldScanForAddresses": {
       const { shouldScanForAddresses } = await getFromStorage([
