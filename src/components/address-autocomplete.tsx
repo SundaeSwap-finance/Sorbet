@@ -2,7 +2,7 @@ import React, { ReactElement } from "react";
 import StarIcon from "@mui/icons-material/Star";
 import StarOutlineIcon from "@mui/icons-material/StarOutline";
 import { Popper, Autocomplete, IconButton, TextField, createFilterOptions } from "@mui/material"
-import { AddressBook } from './address-book'
+import { AddressBook } from '../types'
 
 export const autocompleteThemeOverrides = {
     components: {
@@ -28,8 +28,8 @@ export const AddressAutoComplete = ({
     addToAddressBook, removeFromAddressBook,
     updateImpersonatedWallet, finalizeImpersonatedWallet,
 }: AddressAutoCompleteProps) => {
-    const impersonatedAddressBookEntry = addressBook.find(abe => abe.address === impersonatedAddress)
-    const impersonatedAddressIsInAddressBook = (impersonatedAddressBookEntry !== undefined)
+    const impersonatedAddressBookItem = addressBook.find(abi => abi.address === impersonatedAddress)
+    const impersonatedAddressIsInAddressBook = (impersonatedAddressBookItem !== undefined)
 
     const addIconToEndAdornment = (endAdornment: ReactElement, icon: ReactElement) => {
         const children = React.Children.toArray(endAdornment.props.children);
@@ -47,9 +47,9 @@ export const AddressAutoComplete = ({
                 value={impersonatedAddress}
                 options={addressBook}
                 isOptionEqualToValue={(option, value) => option.address === value.address}
-                getOptionLabel={(addressBookEntry) => !addressBookEntry ? "" : typeof addressBookEntry === 'string' ? addressBookEntry : addressBookEntry.address}
-                renderOption={(props, addressBookEntry) => (
-                    <li key={addressBookEntry.address} {...props} style={{ whiteSpace: 'nowrap' }}>{addressBookEntry.name && <b>{addressBookEntry.name}:&nbsp;</b>}{addressBookEntry.address}</li>
+                getOptionLabel={(addressBookItem) => !addressBookItem ? "" : typeof addressBookItem === 'string' ? addressBookItem : addressBookItem.address}
+                renderOption={(props, abi) => (
+                    <li key={abi.address} {...props} style={{ whiteSpace: 'nowrap' }}>{abi.name && <b>{abi.name}:&nbsp;</b>}{abi.address}</li>
                 )}
                 filterOptions={createFilterOptions({
                     matchFrom: 'any',
@@ -99,7 +99,7 @@ export const AddressAutoComplete = ({
                     />
                 )}
             />
-            {impersonatedAddressBookEntry && <b style={{whiteSpace: "nowrap", overflow: "clip"}}>{impersonatedAddressBookEntry.name ?? "(unamed Address Book entry)"}</b>}
+            {impersonatedAddressBookItem && <b style={{whiteSpace: "nowrap", overflow: "clip"}}>{impersonatedAddressBookItem.name ?? "(unamed Address Book entry)"}</b>}
         </>
     )
 }

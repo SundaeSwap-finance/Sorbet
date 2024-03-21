@@ -11,27 +11,16 @@ import ExclamIcon from "@mui/icons-material/PriorityHighRounded"
 import MainnetIcon from "@mui/icons-material/Hub"
 import TestnetIcon from "@mui/icons-material/BugReport"
 import { isValidAddress } from "../utils/addresses"
+import { AddressBook, AddressBookItem, } from "../types"
 
-export type AddressBookEntry = { name?: string, address: string }
-export type AddressBook = AddressBookEntry[]
-
-export const parseAddressBookFromStorage = (result: { addressBook?: AddressBook }) : AddressBook | undefined => {
-  if (result.addressBook && Array.isArray(result.addressBook)) {
-      return result.addressBook.map(e => (
-        typeof e ===  'string' ? {address: e} as AddressBookEntry : e
-      ))
-  }
-  return undefined
-}
-
-interface AddressBookEntryActions {
+interface AddressBookItemActions {
   setImpersonatedAddress: (a: string) => void
 }
-interface AddressBookProps extends AddressBookEntryActions {
+interface AddressBookProps extends AddressBookItemActions {
   addressBook: AddressBook,
   impersonatedAddress: string,
   removeFromAddressBook: (a: string) => void,
-  addOrUpdateAddressBookEntry: (abe: AddressBookEntry) => void
+  addOrUpdateAddressBookItem: (abe: AddressBookItem) => void
 }
 
 interface EditMode { i: number, name: string }
@@ -39,7 +28,7 @@ interface EditMode { i: number, name: string }
 /** MAIN AddressBook Component */
 export const AddressBookComponent = (props: AddressBookProps): JSX.Element => {
   const { addressBook, impersonatedAddress, setImpersonatedAddress,
-    addOrUpdateAddressBookEntry, } = props
+    addOrUpdateAddressBookItem, } = props
   const [editModes, setEditModes] = useState<EditMode[]>([])
 
   const getEditMode = (i: number): EditMode | undefined => editModes.find(em => em.i === i)
@@ -60,7 +49,7 @@ export const AddressBookComponent = (props: AddressBookProps): JSX.Element => {
     const editMode = getEditMode(i)
     if (editMode) {
       const abe = addressBook[i]
-      addOrUpdateAddressBookEntry({ ...abe, name: editMode.name })
+      addOrUpdateAddressBookItem({ ...abe, name: editMode.name })
       setIsInEditMode(i, false)
     }
   }
@@ -70,13 +59,13 @@ export const AddressBookComponent = (props: AddressBookProps): JSX.Element => {
     )
     setEditModes(newEditModes)
   }
-  const promptForNewAddressBookEntry = () => {
+  const promptForNewAddressBookItem = () => {
     let addr = prompt("Please enter an address to add to the Address Book")
     if (addr) {
       if (!isValidAddress(addr)) {
         confirm("not a valid bech32 address: " + addr + "\n\nPlease verify the address and try again.")
       } else {
-        addOrUpdateAddressBookEntry({ address: addr })
+        addOrUpdateAddressBookItem({ address: addr })
       }
     }
   }
@@ -84,7 +73,7 @@ export const AddressBookComponent = (props: AddressBookProps): JSX.Element => {
   return (
     <>
       <ButtonGroup>
-        <IconButton onClick={() => promptForNewAddressBookEntry()}>
+        <IconButton onClick={() => promptForNewAddressBookItem()}>
           <Tooltip title="Add a New Address" placement="top">
             <AddAddressIcon />
           </Tooltip>
@@ -107,7 +96,7 @@ export const AddressBookComponent = (props: AddressBookProps): JSX.Element => {
           const editModeName = editMode?.name ?? ""
           const isInEditMode = editMode !== undefined
           return (
-            <AddressBookEntryComponent key={i} {...props} {...abe}
+            <AddressBookItemComponent key={i} {...props} {...abe}
               {...{
                 i, impersonatedAddress,
                 setIsInEditMode, saveCurrentName, nameInputOnChange, editModeName, isInEditMode, setImpersonatedAddress
@@ -125,7 +114,7 @@ const minimize = (s: string, halfN = DEFAULT_HALF_N): JSX.Element => (
   s.length > (halfN * 2) ? <><span>{s.slice(0, halfN)}</span>&hellip;<span>{s.slice(-halfN)}</span></> : <>s</>
 )
 /** Individual AddressBook Rows */
-interface AddressBookEntryProps extends AddressBookEntry, AddressBookEntryActions {
+interface AddressBookItemProps extends AddressBookItem, AddressBookItemActions {
   i: number,
   isInEditMode: boolean, editModeName: string,
   impersonatedAddress: string,
@@ -134,7 +123,7 @@ interface AddressBookEntryProps extends AddressBookEntry, AddressBookEntryAction
   nameInputOnChange: (i: number, name: string) => void,
   removeFromAddressBook: (a: string) => void,
 }
-const AddressBookEntryComponent = (props: AddressBookEntryProps): JSX.Element => {
+const AddressBookItemComponent = (props: AddressBookItemProps): JSX.Element => {
   const { i, name, editModeName, address, isInEditMode, nameInputOnChange } = props
   const addressIsValid = isValidAddress(address)
 
@@ -182,7 +171,7 @@ const AddressBookEntryComponent = (props: AddressBookEntryProps): JSX.Element =>
 }
 /** Row Action Buttons */
 const autoHideDuration = 900
-interface AddressBookButtonsProps extends AddressBookEntryProps { }
+interface AddressBookButtonsProps extends AddressBookItemProps { }
 const AddressBookButtons = ({
   i, address, name,
   isInEditMode, setIsInEditMode,

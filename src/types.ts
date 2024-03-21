@@ -10,3 +10,11 @@ export enum EWalletType {
   WRAP = "wrap",
   IMPERSONATE = "impersonate",
 }
+
+/** Address Book */
+export type AddressBookItem = { 
+  name?: string, 
+  address: string 
+}
+
+export type AddressBook = AddressBookItem[]
