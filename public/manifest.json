@@ -24,6 +24,8 @@
     }
   ],
 
+  "devtools_page": "devtools.html",
+
   "web_accessible_resources": [
     {
       "resources": ["js/injectedScript.js", "sorbet.png", "js/*.wasm"],

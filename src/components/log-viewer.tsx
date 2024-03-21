@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, CSSProperties } from "react"
 import { STORE_WALLET_LOG_ACTION, WalletLog } from "../modules/walletLog"
 import { getWalletLogScrollback, retrieveWalletLogs, saveWalletLogScrollback } from "../modules/walletLogStorageHandler"
 import { Box, TextField, Typography } from "@mui/material"
@@ -60,7 +60,23 @@ export const LogViewerComponent = (): JSX.Element => {
         </>
     )
 }
-const logRowStyle = {
+interface LogRowProps extends WalletLog { }
+const LogRow = ({ methodName, args, result, created }: LogRowProps): JSX.Element => (
+    <>
+        <Box sx={{...logRowStyle, ...dateRowStyle}}>[{new Date(created).toString()}]</Box>
+        <Box sx={{...logRowStyle, ...methodCallRowStyle}}>
+            <div><span style={terminalPromptStyle}>&gt;</span> {methodName}</div>
+            <div>({JSON.stringify(args)}) <span style={{...terminalPromptStyle, ...outputStyle}}>=&gt;</span></div>
+            {!Array.isArray(result) &&
+                <div>{JSON.stringify(result)}</div>}
+        </Box>
+        {Array.isArray(result) &&
+            <Box sx={{...logRowStyle, ...resultRowStyle}}>{JSON.stringify(result)}</Box>}
+        <Box sx={rowPadStyle} />
+    </>
+)
+// LogRow CSS Styles
+const logRowStyle: CSSProperties = {
     display: "flex",
     flexDirection: "row",
     alignItems: "left",
@@ -68,17 +84,27 @@ const logRowStyle = {
     whiteSpace: 'nowrap',
     fontSize: 14,
 }
-interface LogRowProps extends WalletLog { }
-const LogRow = ({ methodName, args, result, created }: LogRowProps): JSX.Element => (
-    <>
-        <Box sx={logRowStyle}>{new Date(created).toString()}</Box>
-        <Box sx={logRowStyle}>
-            <div>{methodName}</div>
-            <div>({JSON.stringify(args)}) =&gt;</div>
-            {!Array.isArray(result) &&
-                <div>{JSON.stringify(result)}</div>}
-        </Box>
-        {Array.isArray(result) &&
-            <Box sx={logRowStyle}>{JSON.stringify(result)}</Box>}
-    </>
-)
+const dateRowStyle: CSSProperties = {
+    fontFamily: 'monospace',
+    fontSize: 10,
+}
+const methodCallRowStyle: CSSProperties = {
+    fontFamily: 'Consolas',
+    fontSize: 14,
+}
+const resultRowStyle: CSSProperties = {
+    fontFamily: 'Consolas',
+    fontSize: 14,
+}
+const rowPadStyle: CSSProperties = {
+    marginBottom: '6px'
+}
+const terminalPromptStyle: CSSProperties = {
+    color: '#093',
+    fontSize: '8px',
+    fontWeight: 'bold',
+    verticalAlign: 'middle',
+}
+const outputStyle: CSSProperties = {
+    color: '#930',
+}
