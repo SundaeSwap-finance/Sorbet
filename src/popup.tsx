@@ -155,51 +155,15 @@ const Popup = () => {
     <ThemeProvider theme={theme}>
       <Container component="main" style={{ width: 440, minHeight: 440 }}>
         <CssBaseline />
+        <Header title="Sorbet Settings" />
+        <MenuBar {...{ view, setView }} />
         <Box
           sx={{
-            marginTop: 2,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
-        >
-          <Typography component="h1" variant="h5" fontWeight="bold">
-            Sorbet Settings
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={4} sx={{ marginTop: 2 }}>
-          <ToggleButtonGroup
-            value={view}
-            exclusive
-            fullWidth
-            onChange={(e, value) => setView(value ?? view ?? EView.OVERRIDE)}
-            aria-label="text alignment"
-          >
-            <ToggleButton value={EView.OVERRIDE} aria-label="right aligned">
-              <OverrideIcon />
-            </ToggleButton>
-            <ToggleButton value={EView.DEBUG} aria-label="center aligned">
-              <DebugIcon />
-            </ToggleButton>
-            <ToggleButton value={EView.ADDRESS_BOOK} aria-label="left aligned">
-              <AddressBookIcon />
-            </ToggleButton>
-            <ToggleButton value={EView.LOG_VIEWER} aria-label="left aligned">
-              <LogViewerIcon />
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </Stack>
-        <Box
-          sx={{
-            marginTop: 2,
-            display: "flex",
-            flexDirection: "column",
+            ...boxStyles,
             alignItems: "left",
           }}
         >
-          <Typography>
-            {walletType} {isOverridden ? "" : "NOT"} overriden {overrideWallet}
-          </Typography>
+          <WalletStatus {...{walletType, isOverridden, overrideWallet}} />
           {EView.OVERRIDE === view && (
             <>
               <TextField
@@ -262,6 +226,60 @@ const Popup = () => {
     </ThemeProvider>
   );
 };
+
+/** Component to Display Wallet Status */
+interface WalletStatusProps { walletType: EWalletType, isOverridden: Boolean, overrideWallet: string }
+const WalletStatus = ({ walletType, isOverridden, overrideWallet }: WalletStatusProps) => (
+  <Typography sx={{marginBottom: 2}} component="p" variant="body2" >
+    <b>Wallet Status:</b> {walletType} {isOverridden ? "" : "NOT"} overriden {overrideWallet}
+  </Typography>
+)
+
+const boxStyles = {
+  marginTop: 2,
+  display: "flex",
+  flexDirection: "column",
+}
+
+/** Simple Header Bar */
+const Header = ({ title }: { title: string }) => (
+  <Box
+    sx={{
+      ...boxStyles,
+      alignItems: "center",
+    }}
+  >
+    <Typography component="h1" variant="h5" fontWeight="bold">
+      {title}
+    </Typography>
+  </Box>
+)
+
+/** Simple Menu Bar Component with switch state managed externally  */
+const MenuBar = ({ view, setView }: { view: EView, setView: React.Dispatch<React.SetStateAction<EView>> }) => (
+  <Stack direction="row" spacing={4} sx={{ marginTop: 2 }}>
+    <ToggleButtonGroup
+      value={view}
+      exclusive
+      fullWidth
+      onChange={(e, value) => setView(value ?? view ?? EView.OVERRIDE)}
+      aria-label="text alignment"
+    >
+      <ToggleButton value={EView.OVERRIDE} aria-label="right aligned">
+        <OverrideIcon />
+      </ToggleButton>
+      <ToggleButton value={EView.DEBUG} aria-label="center aligned">
+        <DebugIcon />
+      </ToggleButton>
+      <ToggleButton value={EView.ADDRESS_BOOK} aria-label="left aligned">
+        <AddressBookIcon />
+      </ToggleButton>
+      <ToggleButton value={EView.LOG_VIEWER} aria-label="left aligned">
+        <LogViewerIcon />
+      </ToggleButton>
+    </ToggleButtonGroup>
+  </Stack>
+)
 
 const root = createRoot(document.getElementById("root")!);
 
