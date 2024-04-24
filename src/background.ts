@@ -1,7 +1,9 @@
+import { StorageKeys } from "./components/p2p-connect";
 import { STORE_WALLET_LOG_ACTION } from "./modules/walletLog";
 import { processWalletLogRequest } from "./modules/walletLogStorageHandler";
 import { EWalletType } from "./types";
 import { stakeKeyFromAddress } from "./utils/addresses";
+import { Log } from "./utils/log_util";
 import { getFromStorage } from "./utils/storage";
 
 interface Asset {
@@ -69,6 +71,7 @@ async function callBlockfrost(mainnet: Boolean, path: string, params: Record<str
 }
 
 async function handleRequest(request: any) {
+  Log.App.Message("handleRequest", request)
   switch (request.action) {
     case "addToAddressBook": {
       console.log("Sorbet: adding to address book")
@@ -103,10 +106,11 @@ async function handleRequest(request: any) {
       return { shouldScanForAddresses };
     }
     case "query_walletConfig": {
-      const { walletType, impersonatedAddress, wallet } = await getFromStorage([
+      const { walletType, impersonatedAddress, wallet, peerId } = await getFromStorage([
         "wallet",
         "impersonatedAddress",
         "walletType",
+        StorageKeys.PEER_ID_STORAGE,
       ]);
       const network = impersonatedAddress?.startsWith("addr_test") ? 0 : 1;
       return {
@@ -114,6 +118,7 @@ async function handleRequest(request: any) {
         wallet,
         impersonatedAddress,
         network,
+        peerId,
       };
     }
     case "request_getUsedAddresses": {

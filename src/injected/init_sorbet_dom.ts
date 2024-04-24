@@ -2,7 +2,7 @@ import { ImpersonatedWallet } from "../modules/ImpersonatedWallet.class";
 import { EWalletType } from "../types";
 import { Log } from "../utils/log_util";
 import { sendMessageToBackground } from "../utils/sendMessageToBackground";
-import { setAddress, addToAddressBook } from "./messages";
+import { addToAddressBook, setAddress } from "./messages";
 
 /**
  * Initialize the cardano.sorbet DOM object based on user preferences
@@ -10,10 +10,11 @@ import { setAddress, addToAddressBook } from "./messages";
  */
 export async function initSorbetDOMObject(extensionBaseURL: string) {
     // Retrieve user preferences
-    let { wallet, impersonatedAddress, walletType } = await sendMessageToBackground({
+    let { wallet, impersonatedAddress, walletType, peerId } = await sendMessageToBackground({
         action: "query_walletConfig",
     });
     // Initialize object based on user preferences
+    Log.D("initial walletConfig:", peerId, wallet, impersonatedAddress, walletType)
     if (walletType !== EWalletType.IMPERSONATE && wallet) {
         initializeSorbetWallet_NOT_Impersonate(walletType, wallet, extensionBaseURL);
     } else if (walletType === EWalletType.IMPERSONATE) {

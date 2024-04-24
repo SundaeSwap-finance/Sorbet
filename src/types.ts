@@ -3,6 +3,7 @@ export enum EView {
   OVERRIDE = "override",
   ADDRESS_BOOK = "addressbook",
   LOG_VIEWER = "logviewer",
+  P2P_CONNECT = "p2p_connect",
 }
 
 export enum EWalletType {
