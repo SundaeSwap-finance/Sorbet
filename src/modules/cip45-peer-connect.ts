@@ -11,6 +11,7 @@ const SORBET_WALLET_INFO: IWalletInfo = {
   name: 'sorbet', // must match name in cardano DOM object
   version: SORBET_VERSION,
   icon: SORBET_LOGO_BASE64,
+  requestAutoconnect: true,
 }
 
 const announceEndpoints = [
@@ -31,11 +32,11 @@ class SorbetPeerConnect extends CardanoPeerConnect {
     discoverySeed?: string,
     logLevel?: LogLevel,
   ) {
-    super({ ...SORBET_WALLET_INFO, ...walletInfo }, {
+    super({ ...SORBET_WALLET_INFO, ...walletInfo, }, {
       seed,
       announce: announce ?? announceEndpoints,
       discoverySeed,
-      logLevel: logLevel ?? 'debug',
+      logLevel: logLevel ?? 'info',
     });
     Log.D("this", this)
     Log.D("inside PeerConnectClient constructor")
@@ -102,10 +103,13 @@ class SorbetPeerConnect extends CardanoPeerConnect {
 let connectStatus: IConnectMessage | undefined = undefined;
 // let peerConnect: PeerConnectClient | undefined = undefined
 /**
- * Initialize the CIP-45 P2P Client
+ * Initialize the CIP-45 P2P Client, maintaining a global singleton
  * @param onConnect 
  * @returns 
  */
+export function hasP2PClient() {
+  return peerConnect !== undefined
+}
 export function initP2PClient(seed?: string) {
   if (!peerConnect) {
     Log.App.P2PConnect("Creating New P2P Client")
@@ -118,10 +122,10 @@ export function initP2PClient(seed?: string) {
 
 let peerConnect: SorbetPeerConnect | undefined = undefined
 
-export const initP2PClientDEMO = (seed?: string, walletInfo?: Partial<IWalletInfo>, announceEndpoints?: string[]) => {
-  return new SorbetPeerConnect(
-    seed,
-    walletInfo,
-    announceEndpoints
-  )
-}
+// export const initP2PClientDEMO = (seed?: string, walletInfo?: Partial<IWalletInfo>, announceEndpoints?: string[]) => {
+//   return new SorbetPeerConnect(
+//     seed,
+//     walletInfo,
+//     announceEndpoints
+//   )
+// }

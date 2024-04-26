@@ -1,17 +1,17 @@
-import { StorageKeys } from "./components/p2p-connect";
 import { STORE_WALLET_LOG_ACTION } from "./modules/walletLog";
 import { processWalletLogRequest } from "./modules/walletLogStorageHandler";
 import { EWalletType } from "./types";
 import { stakeKeyFromAddress } from "./utils/addresses";
 import { Log } from "./utils/log_util";
-import { getFromStorage } from "./utils/storage";
+import { CustomResponseStorageKeys, P2PStorageKeys, getFromStorage } from "./utils/storage";
+import { encodeUtxos } from "./utils/utxo";
 
 interface Asset {
   unit: string;
   amount: string;
 }
 
-interface Quantity {
+export interface Quantity {
   unit: string;
   quantity: string;
 }
@@ -110,7 +110,7 @@ async function handleRequest(request: any) {
         "wallet",
         "impersonatedAddress",
         "walletType",
-        StorageKeys.PEER_ID_STORAGE,
+        P2PStorageKeys.P2P_PEER_ID,
       ]);
       const network = impersonatedAddress?.startsWith("addr_test") ? 0 : 1;
       return {
@@ -226,11 +226,22 @@ async function handleRequest(request: any) {
       };
     }
     case "request_getUTXOs": {
-      const { impersonatedAddress } = await getFromStorage({
+      const storage = await getFromStorage({
         impersonatedAddress: "",
+        [CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED]: false,
+        [CustomResponseStorageKeys.MOCK_UTXOS]: [],
       });
+      const { impersonatedAddress } = storage
+      const isCustomResponseEnabled = storage[CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED]
+      const mockUtxos = storage[CustomResponseStorageKeys.MOCK_UTXOS]
       if (!impersonatedAddress) {
         return { error: "No impersonated address set" };
+      }
+      if (isCustomResponseEnabled) {
+        Log.D("Returning custom UTxO response", mockUtxos)
+        return {
+          utxos: encodeUtxos(mockUtxos)
+        }
       }
       if (blockfrostCache.utxos[impersonatedAddress]) {
         return { utxos: blockfrostCache.utxos[impersonatedAddress] };
@@ -239,69 +250,10 @@ async function handleRequest(request: any) {
       const mainnet = !impersonatedAddress?.startsWith("addr_test");
       const stakeKey = stakeKeyFromAddress(impersonatedAddress);
 
-      let page = 1;
-      let allData: any[] = [];
-      while (true) {
-        // We get all the addresses based on the stake key.
-        const addresses = await callBlockfrost(mainnet, `/api/v0/accounts/${stakeKey}/addresses?page=${page}`);
-        const pageData = await Promise.all(
-          Object.values<{ address: string }>(addresses).map(
-            async ({ address }: { address: string }) => {
-              const utxos: any = await callBlockfrost(mainnet, `/api/v0/addresses/${address}/utxos`);
-              return utxos;
-            }
-          )
-        );
-        if (pageData.length <= 0) {
-          break;
-        }
-        page += 1;
-        allData.push(...pageData);
-      }
+      let allData: any[] = await getAllUtxos(mainnet, stakeKey);
       // We flatten all utxos into a single array
       const utxos = allData.flat();
-      // Rencode utxos from blockfrost style unit/quantity tuples, to coin / multiasset objects
-      const utxosWithAssets = utxos.map((utxo: any) => {
-        const { address, tx_hash, output_index, amount } = utxo;
-        let ada: Quantity[] = [];
-        let assets: Quantity[] = [];
-
-        amount?.forEach((asset: any) => {
-          if (asset.unit === "lovelace") {
-            ada.push(asset);
-            return;
-          }
-
-          assets.push(asset);
-        });
-
-        const balance: any = {
-          coin: ada.reduce((total: number, { quantity }: Quantity) => {
-            total += Number(quantity);
-            return total;
-          }, 0),
-        };
-
-        if (assets) {
-          balance.multi_assets = {};
-          assets.forEach(({ quantity, unit }: Quantity) => {
-            let policyId = unit.slice(0, 56);
-            let tokenName = unit.slice(56);
-            if (balance.multi_assets[policyId] === undefined) {
-              balance.multi_assets[policyId] = {};
-            }
-            balance.multi_assets[policyId][tokenName] =
-              Number(balance.multi_assets?.[policyId]?.[tokenName] ?? 0) + Number(quantity);
-          });
-        }
-
-        return {
-          address,
-          tx_hash,
-          output_index,
-          amount: balance,
-        };
-      });
+      const utxosWithAssets = encodeUtxos(utxos);
 
       blockfrostCache.utxos[impersonatedAddress] = utxosWithAssets;
       return {
@@ -311,4 +263,27 @@ async function handleRequest(request: any) {
     default:
       return { error: `Unrecognized action ${request.action}` };
   }
+}
+
+async function getAllUtxos(mainnet: boolean, stakeKey: string): Promise<any[]> {
+  let page = 1;
+  let allData: any[] = [];
+  while (true) {
+    // We get all the addresses based on the stake key.
+    const addresses = await callBlockfrost(mainnet, `/api/v0/accounts/${stakeKey}/addresses?page=${page}`);
+    const pageData = await Promise.all(
+      Object.values<{ address: string; }>(addresses).map(
+        async ({ address }: { address: string; }) => {
+          const utxos: any = await callBlockfrost(mainnet, `/api/v0/addresses/${address}/utxos`);
+          return utxos;
+        }
+      )
+    );
+    if (pageData.length <= 0) {
+      break;
+    }
+    page += 1;
+    allData.push(...pageData);
+  }
+  return allData;
 }
