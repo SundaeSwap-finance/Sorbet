@@ -15,6 +15,10 @@ const SORBET_WALLET_INFO: IWalletInfo = {
 }
 
 const announceEndpoints = [
+  "wss://tracker.de-0.eternl.art",
+  "wss://tracker.us-0.eternl.art",
+]
+const demoAnnounceEndpoints = [
   'https://pro.passwordchaos.gimbalabs.io',
   'wss://tracker.files.fm:7073/announce',
   // 'wss://tracker.btorrent.xyz',
