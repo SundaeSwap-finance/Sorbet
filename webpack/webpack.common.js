@@ -10,6 +10,8 @@ module.exports = {
     background: path.join(srcDir, "background.ts"),
     content_script: path.join(srcDir, "content_script.ts"),
     injectedScript: path.join(srcDir, "injectedScript.ts"),
+    devtools: path.join(srcDir, "devtools/index.ts"),
+    log_devtool: path.join(srcDir, "devtools/log_devtool.tsx"),
   },
   output: {
     path: path.join(__dirname, "../dist/js"),

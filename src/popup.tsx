@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import DebugIcon from "@mui/icons-material/Analytics";
 import AddressBookIcon from "@mui/icons-material/MenuBook";
+import LogViewerIcon from "@mui/icons-material/DocumentScanner";
 import OverrideIcon from "@mui/icons-material/Settings";
 import {
   InputLabel, Stack, Switch, ToggleButton, ToggleButtonGroup, Box,
@@ -8,12 +9,14 @@ import {
 } from "@mui/material";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { createRoot } from "react-dom/client";
-import { EView, EWalletType } from "./types";
+import { EView, EWalletType, AddressBook, AddressBookItem } from "./types";
 import { WalletSelect } from "./components/wallet-select";
-import { AddressBook, AddressBookComponent, AddressBookEntry, parseAddressBookFromStorage } from "./components/address-book";
+import { AddressBookComponent } from "./components/address-book";
 import { AddressAutoComplete, autocompleteThemeOverrides } from "./components/address-autocomplete";
 import { getFromStorage } from "./utils/storage";
 import { isValidAddress } from "./utils/addresses";
+import { LogViewerComponent } from "./components/log-viewer";
+import { addItemToAddressBook, addOrUpdateItemInAddressBook, deleteFromAddressBook, parseAddressBookFromStorage } from "./modules/addressBookStorage";
 
 const theme = createTheme({ ...autocompleteThemeOverrides });
 
@@ -51,7 +54,7 @@ const Popup = () => {
   }, []);
 
   useEffect(() => {
-    const storageChangedListener = (changes: {[key: string]: chrome.storage.StorageChange}) => {
+    const storageChangedListener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
       // console.log("changes", changes); // {key : { newValue: 'value' }}
       const shouldUpdateState = changes.impersonatedAddress && changes.impersonatedAddress.newValue !== impersonatedAddress
       if (shouldUpdateState) {
@@ -77,14 +80,15 @@ const Popup = () => {
   };
 
   const updateOverrideWallet = (newValue: string) => {
-    console.log('overriding wallet to', newValue)
+    console.log('Sorbet: overriding wallet to', newValue)
     chrome.storage.sync.set({ overrideWallet: newValue }, function () {
-      console.log('persisted to sync', newValue)
+      console.log('Sorbet: persisted overrideWallet to sync', newValue)
       setOverrideWallet(newValue ?? "");
     });
   };
 
   const updateIsOverridden = (newValue: boolean) => {
+    console.log("Sorbet: updateIsOverridden", newValue)
     if (!newValue) {
       updateOverrideWallet('none');
     }
@@ -140,77 +144,26 @@ const Popup = () => {
     }
     updateImpersonatedWallet(newValue);
   };
-  const addToAddressBook = (newValue: string): void => {
-    if (addressBook.find(abe => abe.address === newValue))
-      return
-    const newAddressBook = [...addressBook, { address: newValue }];
-    chrome.storage.sync.set({ addressBook: newAddressBook }, function () {
-      setAddressBook(newAddressBook ?? []);
-    });
-  };
-  const addOrUpdateAddressBookEntry = (newEntry: AddressBookEntry) => {
-    let newAddressBook = [...addressBook];
-    const found = addressBook.find(abe => abe.address === newEntry.address)
-    if (!found) {
-      newAddressBook.push(newEntry)
-    } else {
-      newAddressBook = newAddressBook.map(abe => 
-        abe.address === newEntry.address ? newEntry : abe
-      )
-    }
-    chrome.storage.sync.set({ addressBook: newAddressBook }, function () {
-      setAddressBook(newAddressBook ?? []);
-    });
-  }
-  const removeFromAddressBook = (valueToRemove: string) => {
-    const newAddressBook = [...addressBook].filter(abe => abe.address !== valueToRemove);
-    chrome.storage.sync.set({ addressBook: newAddressBook }, function () {
-      setAddressBook(newAddressBook ?? []);
-    });
-  };
+  const addToAddressBook = (newValue: string): void => addItemToAddressBook(newValue, setAddressBook)
+  
+  const addOrUpdateAddressBookItem = (newItem: AddressBookItem) => 
+    addOrUpdateItemInAddressBook(newItem, (newAddressBook) => { setAddressBook([...newAddressBook]) })
+  
+  const removeFromAddressBook = (valueToRemove: string) => deleteFromAddressBook(valueToRemove, setAddressBook)
+  
   return (
     <ThemeProvider theme={theme}>
       <Container component="main" style={{ width: 440, minHeight: 440 }}>
         <CssBaseline />
+        <Header title="Sorbet Settings" />
+        <MenuBar {...{ view, setView }} />
         <Box
           sx={{
-            marginTop: 2,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
-        >
-          <Typography component="h1" variant="h5" fontWeight="bold">
-            Sorbet Settings
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={4} sx={{ marginTop: 2 }}>
-          <ToggleButtonGroup
-            value={view}
-            exclusive
-            fullWidth
-            onChange={(e, value) => setView(value)}
-            aria-label="text alignment"
-          >
-            <ToggleButton value={EView.OVERRIDE} aria-label="right aligned">
-              <OverrideIcon />
-            </ToggleButton>
-            <ToggleButton value={EView.DEBUG} aria-label="center aligned">
-              <DebugIcon />
-            </ToggleButton>
-            <ToggleButton value={EView.ADDRESS_BOOK} aria-label="left aligned">
-              <AddressBookIcon />
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </Stack>
-        <Box
-          sx={{
-            marginTop: 2,
-            display: "flex",
-            flexDirection: "column",
+            ...boxStyles,
             alignItems: "left",
           }}
         >
+          <WalletStatus {...{walletType, isOverridden, overrideWallet}} />
           {EView.OVERRIDE === view && (
             <>
               <TextField
@@ -229,7 +182,7 @@ const Popup = () => {
                   <AddressAutoComplete {...{
                     addressBook, impersonatedAddress, impersonatedAddressIsValid,
                     updateImpersonatedWallet, finalizeImpersonatedWallet,
-                    addToAddressBook, removeFromAddressBook, addOrUpdateAddressBookEntry
+                    addToAddressBook, removeFromAddressBook, addOrUpdateAddressBookItem
                   }} />
                   {impersonatedAddress && (
                     <Button style={{ marginTop: 2 }} onClick={clearImpersonateWallet}>
@@ -259,17 +212,74 @@ const Popup = () => {
           <WalletSelect label="" wallet={overrideWallet} onChange={updateOverrideWallet} />
         )}
         {EView.ADDRESS_BOOK === view && (
-          <AddressBookComponent {...{ 
-            addressBook, removeFromAddressBook, addOrUpdateAddressBookEntry,
+          <AddressBookComponent {...{
+            addressBook, removeFromAddressBook, addOrUpdateAddressBookItem,
             impersonatedAddress
           }}
             setImpersonatedAddress={updateImpersonatedWallet}
           />
         )}
+        {EView.LOG_VIEWER === view && (
+          <LogViewerComponent />
+        )}
       </Container>
     </ThemeProvider>
   );
 };
+
+/** Component to Display Wallet Status */
+interface WalletStatusProps { walletType: EWalletType, isOverridden: Boolean, overrideWallet: string }
+const WalletStatus = ({ walletType, isOverridden, overrideWallet }: WalletStatusProps) => (
+  <Typography sx={{marginBottom: 2}} component="p" variant="body2" >
+    <b>Wallet Status:</b> {walletType} {isOverridden ? "" : "NOT"} overriden {overrideWallet}
+  </Typography>
+)
+
+const boxStyles = {
+  marginTop: 2,
+  display: "flex",
+  flexDirection: "column",
+}
+
+/** Simple Header Bar */
+const Header = ({ title }: { title: string }) => (
+  <Box
+    sx={{
+      ...boxStyles,
+      alignItems: "center",
+    }}
+  >
+    <Typography component="h1" variant="h5" fontWeight="bold">
+      {title}
+    </Typography>
+  </Box>
+)
+
+/** Simple Menu Bar Component with switch state managed externally  */
+const MenuBar = ({ view, setView }: { view: EView, setView: React.Dispatch<React.SetStateAction<EView>> }) => (
+  <Stack direction="row" spacing={4} sx={{ marginTop: 2 }}>
+    <ToggleButtonGroup
+      value={view}
+      exclusive
+      fullWidth
+      onChange={(e, value) => setView(value ?? view ?? EView.OVERRIDE)}
+      aria-label="text alignment"
+    >
+      <ToggleButton value={EView.OVERRIDE} aria-label="right aligned">
+        <OverrideIcon />
+      </ToggleButton>
+      <ToggleButton value={EView.DEBUG} aria-label="center aligned">
+        <DebugIcon />
+      </ToggleButton>
+      <ToggleButton value={EView.ADDRESS_BOOK} aria-label="left aligned">
+        <AddressBookIcon />
+      </ToggleButton>
+      <ToggleButton value={EView.LOG_VIEWER} aria-label="left aligned">
+        <LogViewerIcon />
+      </ToggleButton>
+    </ToggleButtonGroup>
+  </Stack>
+)
 
 const root = createRoot(document.getElementById("root")!);
 
