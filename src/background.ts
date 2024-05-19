@@ -9,7 +9,7 @@ interface Asset {
   amount: string;
 }
 
-interface Quantity {
+export interface Quantity {
   unit: string;
   quantity: string;
 }
