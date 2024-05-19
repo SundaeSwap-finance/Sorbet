@@ -57,7 +57,6 @@ const Popup = () => {
 
   useEffect(() => {
     const storageChangedListener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-      // console.log("changes", changes); // {key : { newValue: 'value' }}
       const shouldUpdateState = changes.impersonatedAddress && changes.impersonatedAddress.newValue !== impersonatedAddress
       if (shouldUpdateState) {
         setImpersonatedAddress(changes.impersonatedAddress.newValue)

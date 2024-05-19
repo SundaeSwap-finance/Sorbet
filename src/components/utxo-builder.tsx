@@ -20,11 +20,11 @@ export default function UTxOBuilder() {
       {utxos.map((u, idx) => (
         <UTxOFieldList key={idx} {...{ disabled, u, setU: (u2) => setUi(idx, u2), removeU: () => removeUi(idx) }} />
       ))}
-      <UTxOViwer {...{ disabled, utxos }} />
+      <UTxOViewer {...{ disabled, utxos }} />
     </>
   )
 }
-const UTxOViwer = ({ utxos, disabled }: { utxos: UTxO[], disabled: boolean }) => {
+const UTxOViewer = ({ utxos, disabled }: { utxos: UTxO[], disabled: boolean }) => {
   const theme = useTheme();
   const [encodedUtxos, setEncodedUtxos] = useState<MultiAssetOut[]>([])
   useEffect(() => {
