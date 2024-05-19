@@ -12,12 +12,10 @@ interface UTxOBase {
 /** Blockfrost style unit/quantity tuples */
 export interface UTxO extends UTxOBase {
     amount: Quantity[]
-    // amount: { coin: any, multi_assets: { [k: string]: any } }
 }
 /** Coin / MultiAsset objects */
 interface UTxOWithAssets extends UTxOBase {
     amount: MultiAssetAmount
-    // amount: { coin: any, multi_assets: { [k: string]: any } }
 }
 interface MultiAssetIn {
     address: any,
@@ -127,27 +125,3 @@ export function encodeUtxos(utxos: MultiAssetIn[]): MultiAssetOut[] {
     }
     return []
 }
-
-
-/**  Lucid UTxO domain model */
-/**
-type Address = string;
-type Datum = string;
-type DatumHash = string
-type TxHash = string
-type Unit = string;
-type Assets = Record<Unit | "lovelace", bigint>;
-type ScriptType = "Native" | PlutusVersion;
-type PlutusVersion = "PlutusV1" | "PlutusV2";
-type Script = { type: ScriptType; script: string };
-
-type UTxO = {
-  txHash: TxHash;
-  outputIndex: number;
-  assets: Assets;
-  address: Address;
-  datumHash?: DatumHash | null;
-  datum?: Datum | null;
-  scriptRef?: Script | null;
-};
-*/

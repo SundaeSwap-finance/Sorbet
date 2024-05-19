@@ -91,15 +91,13 @@ export function P2PProvider(props: { children: JSX.Element | JSX.Element[] }) {
       addP2pConnection({
         ...m.dApp, identicon
       })
-      // savePeerId(undefined)
-      // _setPeerId(undefined)
     }
     return initP2PConnectClient(_setConnectionState, p2pSeed)
   })
 
   const identicon = useRef<string | null>(null);
 
-  // handle connect / disconnect 
+  /** handle connect / disconnect  */
   const connectP2P = () => {
     if (p2pClient && peerId && peerId !== "") {
       setConnectionState('connecting')
@@ -143,7 +141,6 @@ export function P2PProvider(props: { children: JSX.Element | JSX.Element[] }) {
     isConnected, isConnecting, connectionState,
     p2pConnections, setP2pConnections, addP2pConnection, removeP2pConnection
   ])
-  // Log.D("useP2p context:", context)
   return <P2PContext.Provider value={context}>{props.children}</P2PContext.Provider>
 }
 
@@ -151,10 +148,6 @@ const initP2PConnectClient = (
   setConnectionState: (state: ConnectionState, m: IConnectMessage) => void,
   p2pSeed?: string
 ) => {
-
-  // if (hasP2PClient()) {
-  //   return initP2PClient(p2pSeed)
-  // }
 
   const p2pClient = initP2PClient(p2pSeed)
 

@@ -90,22 +90,9 @@ class SorbetPeerConnect extends CardanoPeerConnect {
     Log.D("PeerConnectClient - executing wrapped wallet method");
     return this.w.submitTx(tx)
   }
-
-  // getNetworkId = ImpersonatedWallet.prototype.getNetworkId.bind(this);
-  // getUtxos = ImpersonatedWallet.prototype.getUtxos.bind(this);
-  // getCollateral = ImpersonatedWallet.prototype.getCollateral.bind(this);
-  // getBalance = ImpersonatedWallet.prototype.getBalance.bind(this);
-  // getUsedAddresses = ImpersonatedWallet.prototype.getUsedAddresses.bind(this);
-  // getUnusedAddresses = ImpersonatedWallet.prototype.getUnusedAddresses.bind(this);
-  // getChangeAddress = ImpersonatedWallet.prototype.getChangeAddress.bind(this);
-  // getRewardAddresses = ImpersonatedWallet.prototype.getRewardAddresses.bind(this);
-  // signTx = ImpersonatedWallet.prototype.signTx.bind(this);
-  // signData = ImpersonatedWallet.prototype.signData.bind(this);
-  // submitTx = ImpersonatedWallet.prototype.submitTx.bind(this);
 }
 
 let connectStatus: IConnectMessage | undefined = undefined;
-// let peerConnect: PeerConnectClient | undefined = undefined
 /**
  * Initialize the CIP-45 P2P Client, maintaining a global singleton
  * @param onConnect 
@@ -126,10 +113,3 @@ export function initP2PClient(seed?: string) {
 
 let peerConnect: SorbetPeerConnect | undefined = undefined
 
-// export const initP2PClientDEMO = (seed?: string, walletInfo?: Partial<IWalletInfo>, announceEndpoints?: string[]) => {
-//   return new SorbetPeerConnect(
-//     seed,
-//     walletInfo,
-//     announceEndpoints
-//   )
-// }

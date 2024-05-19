@@ -40,7 +40,6 @@ const splitAndAnnotateTextNode = (c: Element, showAddressMenu: (a: string, ev: M
   const nodeVal = c.nodeValue
   if (!nodeVal)
     return 0
-  // Log.D("splitNodeVal: checking node val", nodeVal)
   let found = 0
   const v = nodeVal.split(/\s|\n/).map((o, _i) => {
     if (isValidAddress(o)) {
