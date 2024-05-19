@@ -15,9 +15,8 @@ import { AddressAutoComplete, autocompleteThemeOverrides } from "./components/ad
 import { AddressBookComponent } from "./components/address-book";
 import { LogViewerComponent } from "./components/log-viewer";
 import { P2PConnections } from "./components/p2p-connect";
-import UTxOBuilder from "./components/utxo-builder";
 import { WalletSelect } from "./components/wallet-select";
-import { P2PProvider, useP2pStatus } from "./hooks/useP2p";
+import { P2PProvider, useP2PStatus } from "./hooks/useP2P";
 import { addItemToAddressBook, addOrUpdateItemInAddressBook, deleteFromAddressBook, parseAddressBookFromStorage } from "./modules/addressBookStorage";
 import { AddressBook, AddressBookItem, EView, EWalletType } from "./types";
 import { isValidAddress } from "./utils/addresses";
@@ -254,9 +253,6 @@ const Popup = () => {
           {EView.P2P_CONNECT === view && (
             <P2PConnections />
           )}
-          {EView.UTXO_BUILDER === view && (
-            <UTxOBuilder />
-          )}
         </Container>
       </P2PProvider>
     </ThemeProvider>
@@ -306,8 +302,7 @@ const Header = ({ title }: { title: string }) => (
 /** Simple Menu Bar Component with switch state managed externally  */
 const MenuBar = ({ view, setView }: { view: EView, setView: (v: EView) => void }) => {
 
-  // const { isCustomResponseEnabled } = useCustomResponse()
-  const { isConnecting, isConnected } = useP2pStatus()
+  const { isConnecting, isConnected } = useP2PStatus()
   return (
     <Stack direction="row" spacing={4} sx={{ marginTop: 2 }}>
       <ToggleButtonGroup
@@ -329,9 +324,6 @@ const MenuBar = ({ view, setView }: { view: EView, setView: (v: EView) => void }
         <ToggleButton value={EView.P2P_CONNECT} aria-label="center aligned">
           {isConnecting ? <P2PConnectIcon color="primary" /> : isConnected ? <P2PConnectIcon color="success" /> : <P2PConnectIcon />}
         </ToggleButton>
-        {/* <ToggleButton value={EView.UTXO_BUILDER} aria-label="center aligned">
-          {isCustomResponseEnabled ? <UtXOBuilderIcon color="primary" /> : <UtXOBuilderIcon />}
-        </ToggleButton> */}
         <ToggleButton value={EView.LOG_VIEWER} aria-label="left aligned">
           <LogViewerIcon />
         </ToggleButton>

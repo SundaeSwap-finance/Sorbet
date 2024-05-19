@@ -42,8 +42,8 @@ export const P2PContext = createContext<P2PState>({
 });
 
 /** Hooks for using P2PContext at various granularity levels */
-export const useP2p = () => useContext(P2PContext)
-export const useP2pStatus = () => {
+export const useP2P = () => useContext(P2PContext)
+export const useP2PStatus = () => {
   const { isConnected, isConnecting, connectMessage, connectionState } = useContext(P2PContext)
   return { isConnected, isConnecting, connectMessage, connectionState }
 }

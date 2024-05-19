@@ -3,13 +3,13 @@ import ConnectIcon from "@mui/icons-material/PowerOutlined";
 import { Alert, Box, Card, CardContent, CardMedia, TextField, Typography } from "@mui/material";
 import P2PRefreshingIcon from '@mui/material/CircularProgress';
 import React from "react";
-import { P2PConnection, useP2p } from "../hooks/useP2p";
+import { P2PConnection, useP2P } from "../hooks/useP2P";
 import { SorbetIconButton } from "./sorbet-icon-button";
 
 /** Component with P2P Connection & Peer Id state managed externally  */
 
 export const P2PConnections = () => {
-  const { isReady, p2pConnections } = useP2p()
+  const { isReady, p2pConnections } = useP2P()
 
   return isReady && (
     <>
@@ -22,7 +22,7 @@ export const P2PConnections = () => {
 }
 
 const P2PConnectionsList = () => {
-  const { p2pConnections } = useP2p() ?? {}
+  const { p2pConnections } = useP2P() ?? {}
   return (
     <Box>
       {p2pConnections?.map(c => (
@@ -34,7 +34,7 @@ const P2PConnectionsList = () => {
   )
 }
 export const P2PConnectInput = () => {
-  const { peerId, savePeerId } = useP2p()
+  const { peerId, savePeerId } = useP2P()
   return (
     <TextField
       fullWidth
@@ -55,7 +55,7 @@ export const P2PConnectInput = () => {
  * Component to display current P2P Connection Status
  */
 const ConnectStateComponent = () => {
-  const { isConnected, isConnecting, connectionState } = useP2p()
+  const { isConnected, isConnecting, connectionState } = useP2P()
   return (
     <Box sx={{ display: 'flex', gap: 3 }}>
       <Alert severity={isConnected ? 'success' : isConnecting ? 'info' : 'warning'}>{connectionState[0].toUpperCase() + connectionState.slice(1)}</Alert>
@@ -64,7 +64,7 @@ const ConnectStateComponent = () => {
   )
 }
 const P2PConnectionStatus = () => {
-  const { connectMessage, p2pSeed } = useP2p()
+  const { connectMessage, p2pSeed } = useP2P()
   return (
     <>
       <Box>
@@ -77,7 +77,7 @@ const P2PConnectionStatus = () => {
   )
 }
 function P2PConnectButton(): React.ReactNode {
-  const { isConnected, isConnecting, connectP2P, disconnectP2P, peerId } = useP2p()
+  const { isConnected, isConnecting, connectP2P, disconnectP2P, peerId } = useP2P()
   return <SorbetIconButton
     key={0}
     tooltipTitle={isConnected || isConnecting ? "Disconnect P2P" : "Connect P2P"}
