@@ -19,6 +19,7 @@ import { isValidAddress } from "./utils/addresses";
 import { LogViewerComponent } from "./components/log-viewer";
 import { addItemToAddressBook, addOrUpdateItemInAddressBook, deleteFromAddressBook, parseAddressBookFromStorage } from "./modules/addressBookStorage";
 import { useCustomResponse } from "./hooks/useCustomResponse";
+import UTxOBuilder from "./components/utxo-builder";
 
 const theme = createTheme({ ...autocompleteThemeOverrides });
 
@@ -146,12 +147,12 @@ const Popup = () => {
     updateImpersonatedWallet(newValue);
   };
   const addToAddressBook = (newValue: string): void => addItemToAddressBook(newValue, setAddressBook)
-  
-  const addOrUpdateAddressBookItem = (newItem: AddressBookItem) => 
+
+  const addOrUpdateAddressBookItem = (newItem: AddressBookItem) =>
     addOrUpdateItemInAddressBook(newItem, (newAddressBook) => { setAddressBook([...newAddressBook]) })
-  
+
   const removeFromAddressBook = (valueToRemove: string) => deleteFromAddressBook(valueToRemove, setAddressBook)
-  
+
   return (
     <ThemeProvider theme={theme}>
       <Container component="main" style={{ width: 440, minHeight: 440 }}>
@@ -164,7 +165,7 @@ const Popup = () => {
             alignItems: "left",
           }}
         >
-          <WalletStatus {...{walletType, isOverridden, overrideWallet}} />
+          <WalletStatus {...{ walletType, isOverridden, overrideWallet }} />
           {EView.OVERRIDE === view && (
             <>
               <TextField
@@ -220,6 +221,9 @@ const Popup = () => {
             setImpersonatedAddress={updateImpersonatedWallet}
           />
         )}
+        {EView.UTXO_BUILDER === view && (
+          <UTxOBuilder />
+        )}
         {EView.LOG_VIEWER === view && (
           <LogViewerComponent />
         )}
@@ -231,7 +235,7 @@ const Popup = () => {
 /** Component to Display Wallet Status */
 interface WalletStatusProps { walletType: EWalletType, isOverridden: Boolean, overrideWallet: string }
 const WalletStatus = ({ walletType, isOverridden, overrideWallet }: WalletStatusProps) => (
-  <Typography sx={{marginBottom: 2}} component="p" variant="body2" >
+  <Typography sx={{ marginBottom: 2 }} component="p" variant="body2" >
     <b>Wallet Status:</b> {walletType} {isOverridden ? "" : "NOT"} overriden {overrideWallet}
   </Typography>
 )
