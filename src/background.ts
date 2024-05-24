@@ -2,6 +2,7 @@ import { STORE_WALLET_LOG_ACTION } from "./modules/walletLog";
 import { processWalletLogRequest } from "./modules/walletLogStorageHandler";
 import { EWalletType } from "./types";
 import { stakeKeyFromAddress } from "./utils/addresses";
+import { computeBalanceFromQuantities } from "./utils/balance";
 import { Log } from "./utils/log_util";
 import { CustomResponseStorageKeys, getFromStorage } from "./utils/storage";
 import { encodeUtxos } from "./utils/utxo";
@@ -33,7 +34,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 let rateLimiter = Promise.resolve();
 
-async function callBlockfrost(mainnet: Boolean, path: string, params: Record<string, string> = {}): Promise<any> {
+async function callBlockfrost<R = any>(mainnet: Boolean, path: string, params: Record<string, string> = {}): Promise<R> {
   await rateLimiter;
 
   const { blockfrostApiKey, blockfrostMainnetApiKey, blockfrostPreviewApiKey } = await getFromStorage({
@@ -144,85 +145,39 @@ async function handleRequest(request: any) {
       };
     }
     case "request_getBalance": {
-      const { impersonatedAddress } = await getFromStorage({
+      const storage = await getFromStorage({
         impersonatedAddress: "",
+        [CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED]: false,
+        [CustomResponseStorageKeys.MOCK_UTXOS]: [],
       });
+      const { impersonatedAddress } = storage
+      const isCustomResponseEnabled = storage[CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED]
+      const mockUtxos = storage[CustomResponseStorageKeys.MOCK_UTXOS]
+
       if (!impersonatedAddress) {
         return { error: "No impersonated address set" };
       }
-      if (blockfrostCache.balance[impersonatedAddress]) {
+
+      let addressInfos: { amount: Quantity[] }[]
+      if (isCustomResponseEnabled) {
+        addressInfos = mockUtxos
+        Log.D("returning custom response from getBalance()", { mockUtxos })
+      } else if (blockfrostCache.balance[impersonatedAddress]) {
         return { balance: blockfrostCache.balance[impersonatedAddress] };
+      } else {
+        const mainnet = !impersonatedAddress?.startsWith("addr_test")
+        const stakeKey = stakeKeyFromAddress(impersonatedAddress);
+        addressInfos = await getAddressInfo(mainnet, stakeKey)
       }
-
-      const mainnet = !impersonatedAddress?.startsWith("addr_test")
-      const stakeKey = stakeKeyFromAddress(impersonatedAddress);
-
-      const allData: { ada: Quantity[], assets: Quantity[] }[] = [];
-      let page = 1;
-      while (true) {
-        // We get all the addresses based on the stake key.
-        const addresses = await callBlockfrost(mainnet, `/api/v0/accounts/${stakeKey}/addresses?page=${page}`);
-        if (addresses.length === 0) {
-          break;
-        }
-        const pageData = await Promise.all(
-          Object.values<{ address: string }>(addresses).map(
-            async ({ address }: { address: string }) => {
-              const { amount }: { amount: Quantity[] } = await callBlockfrost(mainnet, `/api/v0/addresses/${address}`);
-              let ada: Quantity[] = [];
-              let assets: Quantity[] = [];
-
-              amount?.forEach((asset) => {
-                if (asset.unit === "lovelace") {
-                  ada.push(asset);
-                  return;
-                }
-
-                assets.push(asset);
-              });
-
-              return { ada, assets };
-            }
-          )
-        );
-        allData.push(...pageData);
-        page += 1;
+      const balance = computeBalanceFromQuantities(addressInfos);
+      if (!isCustomResponseEnabled) {
+        blockfrostCache.balance[impersonatedAddress] = balance;
       }
-
-      // We fold all the asset data up into a single array.
-      const balance = allData.reduce((acc, { ada, assets }) => {
-        acc.coin = (Number(acc.coin ?? 0) + ada
-          .reduce((total, { quantity }) => {
-            total += Number(quantity);
-            return total;
-          }, 0)
-        ).toString();
-
-        if (assets) {
-          if (!acc?.multi_assets) {
-            acc.multi_assets = {};
-          }
-
-          assets.forEach(({ quantity, unit }) => {
-            let policyId = unit.slice(0, 56);
-            let tokenName = unit.slice(56);
-            if (acc.multi_assets[policyId] === undefined) {
-              acc.multi_assets[policyId] = {};
-            }
-            acc.multi_assets[policyId][tokenName] =
-              Number(acc.multi_assets?.[policyId]?.[tokenName] ?? 0) + Number(quantity);
-          });
-        }
-
-        return acc;
-      }, {} as Record<string, any>);
-
-      blockfrostCache.balance[impersonatedAddress] = balance;
       return {
-        balance,
-      };
+        balance
+      }
     }
-    
+
     case "request_getUTXOs": {
       const storage = await getFromStorage({
         impersonatedAddress: "",
@@ -263,18 +218,46 @@ async function handleRequest(request: any) {
   }
 }
 
+export interface AddressInfo {
+  address: string,
+  stake_address: string,
+  amount: Quantity[],
+  type: string,
+  script: boolean,
+}
+
+async function getAddressInfo(
+  mainnet: boolean, stakeKey: string
+): Promise<AddressInfo[]> {
+  const allData: AddressInfo[] = []
+  let page = 1;
+  while (true) {
+    // We get all the addresses based on the stake key.
+    const addresses = await callBlockfrost(mainnet, `/api/v0/accounts/${stakeKey}/addresses?page=${page}`);
+    if (addresses.length === 0) {
+      break;
+    }
+    const pageData = await Promise.all(
+      Object.values<{ address: string }>(addresses).map(
+        async ({ address }: { address: string }) =>
+          await callBlockfrost<AddressInfo>(mainnet, `/api/v0/addresses/${address}`)
+      )
+    );
+    allData.push(...pageData);
+    page += 1;
+  }
+  return allData
+}
 async function getAllUtxos(mainnet: boolean, stakeKey: string): Promise<any[]> {
   let page = 1;
-  let allData: any[] = [];
+  const allData: any[] = [];
   while (true) {
     // We get all the addresses based on the stake key.
     const addresses = await callBlockfrost(mainnet, `/api/v0/accounts/${stakeKey}/addresses?page=${page}`);
     const pageData = await Promise.all(
       Object.values<{ address: string; }>(addresses).map(
-        async ({ address }: { address: string; }) => {
-          const utxos: any = await callBlockfrost(mainnet, `/api/v0/addresses/${address}/utxos`);
-          return utxos;
-        }
+        async ({ address }: { address: string; }) =>
+          await callBlockfrost(mainnet, `/api/v0/addresses/${address}/utxos`)
       )
     );
     if (pageData.length <= 0) {

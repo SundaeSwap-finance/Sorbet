@@ -1,7 +1,8 @@
-import type { TConnectedApi, TDataSignature, TExperimentalApi, TPaginate } from "../../typings/cip30";
-import { sendMessageToBackground } from "../utils/sendMessageToBackground";
-import { addressToCredentials, bech32ToHex, getNetworkPrefix, stakeKeyFromAddress } from "../utils/addresses";
 import * as cbor from 'cbor-web';
+import type { TConnectedApi, TDataSignature, TExperimentalApi, TPaginate } from "../../typings/cip30";
+import { bech32ToHex } from "../utils/addresses";
+import { assetsToEncodedBalance } from "../utils/balance";
+import { sendMessageToBackground } from "../utils/sendMessageToBackground";
 import { walletInvoked } from "./walletLog";
 // import { Address } from "@dcspark/cardano-multiplatform-lib-browser";
 
@@ -49,25 +50,7 @@ export class ImpersonatedWallet implements TConnectedApi {
       action: "request_getBalance",
     });
     walletInvoked("getBalance", [], balance);
-
-    // rencode the multiassets to a map of buffers, parsing hex keys on the object to byte buffers
-    let multiAsset = new Map<Buffer, Map<Buffer, number>>();
-    let internedKeys: { [key: string]: Buffer } = {}
-    for (const policyId of Object.keys(balance.multi_assets)) {
-      for (const assetName of Object.keys(balance.multi_assets[policyId])) {
-        const asset = balance.multi_assets[policyId][assetName];
-        const policyIdBuffer = internedKeys[policyId] ?? Buffer.from(policyId, 'hex');
-        const assetNameBuffer = internedKeys[assetName] ?? Buffer.from(assetName, 'hex');
-        internedKeys[policyId] = policyIdBuffer;
-        internedKeys[assetName] = assetNameBuffer;
-        if (!multiAsset.has(policyIdBuffer)) {
-          multiAsset.set(policyIdBuffer, new Map<Buffer, number>());
-        }
-        multiAsset.get(policyIdBuffer)?.set(assetNameBuffer, asset);
-      }
-    }
-    const encoded = (cbor.encodeOne([Number(balance.coin), multiAsset], { highWaterMark: 65535 })).toString('hex');
-    return encoded;
+    return assetsToEncodedBalance(balance)
   }
 
   async getChangeAddress(): Promise<string> {
