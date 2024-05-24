@@ -1,10 +1,28 @@
 import * as cbor from 'cbor-web';
 import type { TConnectedApi, TDataSignature, TExperimentalApi, TPaginate } from "../../typings/cip30";
 import { bech32ToHex } from "../utils/addresses";
-import { sendMessageToBackground } from "../utils/sendMessageToBackground";
+import { sendMessageToBackground as sendMessageToBackground_FromInjected } from "../utils/sendMessageToBackground";
 import { utxosToHexArray } from "../utils/utxo";
 import { walletInvoked } from "./walletLog";
 // import { Address } from "@dcspark/cardano-multiplatform-lib-browser";
+
+/**
+ * allow communication with background thread from popups in the same signature as utils/sendMessageToBackground
+ * @param message
+ * @returns
+ */
+async function sendMessageToBackground_FromPopup<R = any>(message: { action: string } & any) {
+  return await new Promise<R>((resolve, reject) => {
+    chrome.runtime.sendMessage(message,
+      response => {
+        if (response) {
+          resolve(response);
+        } else {
+          reject();
+        }
+      });
+  })
+}
 
 export class ImpersonatedWallet implements TConnectedApi {
   /*
@@ -14,7 +32,11 @@ export class ImpersonatedWallet implements TConnectedApi {
   */
   public experimental?: TExperimentalApi | undefined;
 
-  constructor() {
+  private sendMessageToBackground: (message: { action: string } & any) => any
+
+  constructor(isInjected: boolean) {
+    /** switch between to allow communication with background thread from popups */
+    this.sendMessageToBackground = isInjected ? sendMessageToBackground_FromInjected : sendMessageToBackground_FromPopup
 
     // TODO: This is hard-coded to get dApps to work, since we don't need to actually sign valid transactions,
     // but it'd still be nice to emulate choosing a collateral UTXO from the wallet.
@@ -46,7 +68,7 @@ export class ImpersonatedWallet implements TConnectedApi {
   }
 
   async getBalance(): Promise<string> {
-    const { balance } = await sendMessageToBackground({
+    const { balance } = await this.sendMessageToBackground({
       action: "request_getBalance",
     });
     walletInvoked("getBalance", [], balance);
@@ -72,7 +94,7 @@ export class ImpersonatedWallet implements TConnectedApi {
   }
 
   async getChangeAddress(): Promise<string> {
-    const { impersonatedAddress } = await sendMessageToBackground({
+    const { impersonatedAddress } = await this.sendMessageToBackground({
       action: "query_walletConfig",
     });
     walletInvoked("getChangeAddress", [], impersonatedAddress)
@@ -91,7 +113,7 @@ export class ImpersonatedWallet implements TConnectedApi {
   }
 
   async getNetworkId(): Promise<number> {
-    const { network } = await sendMessageToBackground({
+    const { network } = await this.sendMessageToBackground({
       action: "query_walletConfig",
     });
     walletInvoked("getNetworkId", [], network)
@@ -107,7 +129,7 @@ export class ImpersonatedWallet implements TConnectedApi {
   }
 
   async getUnusedAddresses(paginate?: TPaginate | undefined): Promise<string[]> {
-    const { impersonatedAddress } = await sendMessageToBackground({
+    const { impersonatedAddress } = await this.sendMessageToBackground({
       action: "query_walletConfig",
     });
     walletInvoked("getUnusedAddresses", [paginate], impersonatedAddress)
@@ -116,7 +138,7 @@ export class ImpersonatedWallet implements TConnectedApi {
   }
 
   async getUsedAddresses(paginate?: TPaginate | undefined): Promise<string[]> {
-    const { addresses } = await sendMessageToBackground({
+    const { addresses } = await this.sendMessageToBackground({
       action: "request_getUsedAddresses",
       paginate,
     });
@@ -130,7 +152,7 @@ export class ImpersonatedWallet implements TConnectedApi {
     amount?: string | undefined,
     paginate?: TPaginate | undefined
   ): Promise<string[] | null> {
-    const { utxos } = await sendMessageToBackground({
+    const { utxos } = await this.sendMessageToBackground({
       action: "request_getUTXOs",
     });
     walletInvoked("getUtxos", [amount, paginate], utxos)

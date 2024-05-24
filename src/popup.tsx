@@ -14,14 +14,15 @@ import { createRoot } from "react-dom/client";
 import { AddressAutoComplete, autocompleteThemeOverrides } from "./components/address-autocomplete";
 import { AddressBookComponent } from "./components/address-book";
 import { LogViewerComponent } from "./components/log-viewer";
-import { P2PConnections } from "./components/p2p-connect";
+import { P2P_PopupButton } from "./components/p2p/p2p-popup-button";
 import { WalletSelect } from "./components/wallet-select";
-import { P2PProvider, useP2PStatus } from "./hooks/useP2P";
-import { addItemToAddressBook, addOrUpdateItemInAddressBook, deleteFromAddressBook, parseAddressBookFromStorage } from "./modules/addressBookStorage";
+import {
+  addItemToAddressBook, addOrUpdateItemInAddressBook, deleteFromAddressBook, parseAddressBookFromStorage
+} from "./modules/addressBookStorage";
 import { AddressBook, AddressBookItem, EView, EWalletType } from "./types";
 import { isValidAddress } from "./utils/addresses";
 import { Log } from "./utils/log_util";
-import { getFromStorage } from "./utils/storage";
+import { P2PStorageKeys, getFromStorage, makeStorageChangeListener } from "./utils/storage";
 
 const SORBET_MAIN_THEME: ThemeOptions = {
   palette: {
@@ -70,7 +71,7 @@ const Popup = () => {
         setWrapWallet(result.wrapWallet ?? wrapWallet);
         setOverrideWallet(result.overrideWallet ?? overrideWallet);
         if (result.overrideWallet !== 'none') {
-          Log.D('setOverridden')
+          Log.D('Popup.tsx: setting IsOverridden to true')
           setIsOverridden(true);
         }
       }
@@ -174,87 +175,83 @@ const Popup = () => {
 
   const removeFromAddressBook = (valueToRemove: string) => deleteFromAddressBook(valueToRemove, setAddressBook)
 
-  /** P2P Connect */
-
   return (
     <ThemeProvider theme={theme}>
-      <P2PProvider>
-        <Container component="main" style={{ width: 440, minHeight: 440 }}>
-          <CssBaseline />
-          <Header title="Sorbet Settings" />
-          <MenuBar {...{ view, setView }} />
+      <Container component="main" style={{ width: 440, minHeight: 440 }}>
+        <CssBaseline />
+        <Header title="Sorbet Settings" />
+        <MenuBar {...{ view, setView }} />
+        <Box
+          sx={{
+            ...boxStyles,
+            alignItems: "left",
+          }}
+        >
+          <WalletStatus {...{ walletType, isOverridden, overrideWallet }} />
+          {EView.OVERRIDE === view && (
+            <>
+              <TextField
+                select
+                fullWidth
+                label="Wallet Type"
+                value={walletType}
+                style={{ marginBottom: 12, marginTop: 12 }}
+                onChange={(e) => updateWalletType(e.target.value as EWalletType)}
+              >
+                <MenuItem value="impersonate">Impersonate</MenuItem>
+                <MenuItem value="wrap">Wrap</MenuItem>
+              </TextField>
+              {EWalletType.IMPERSONATE === walletType ? (
+                <>
+                  <AddressAutoComplete {...{
+                    addressBook, impersonatedAddress, impersonatedAddressIsValid,
+                    updateImpersonatedWallet, finalizeImpersonatedWallet,
+                    addToAddressBook, removeFromAddressBook, addOrUpdateAddressBookItem
+                  }} />
+                  {impersonatedAddress && (
+                    <Box sx={{ ...boxStyles, alignItems: 'center' }}>
+                      <Button fullWidth={false} style={{ marginTop: 2, border: '1px solid' }} onClick={clearImpersonateWallet}>
+                        Clear Address
+                      </Button>
+                    </Box>
+                  )}
+                </>
+              ) : (
+                <WalletSelect wallet={wrapWallet} onChange={updateWrapWallet} />
+              )}
+            </>
+          )}
+        </Box>
+        {(EView.OVERRIDE === view || EView.DEBUG === view) && (
           <Box
             sx={{
-              ...boxStyles,
-              alignItems: "left",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
             }}
           >
-            <WalletStatus {...{ walletType, isOverridden, overrideWallet }} />
-            {EView.OVERRIDE === view && (
-              <>
-                <TextField
-                  select
-                  fullWidth
-                  label="Wallet Type"
-                  value={walletType}
-                  style={{ marginBottom: 12, marginTop: 12 }}
-                  onChange={(e) => updateWalletType(e.target.value as EWalletType)}
-                >
-                  <MenuItem value="impersonate">Impersonate</MenuItem>
-                  <MenuItem value="wrap">Wrap</MenuItem>
-                </TextField>
-                {EWalletType.IMPERSONATE === walletType ? (
-                  <>
-                    <AddressAutoComplete {...{
-                      addressBook, impersonatedAddress, impersonatedAddressIsValid,
-                      updateImpersonatedWallet, finalizeImpersonatedWallet,
-                      addToAddressBook, removeFromAddressBook, addOrUpdateAddressBookItem
-                    }} />
-                    {impersonatedAddress && (
-                      <Box sx={{ ...boxStyles, alignItems: 'center' }}>
-                        <Button fullWidth={false} style={{ marginTop: 2, border: '1px solid' }} onClick={clearImpersonateWallet}>
-                          Clear Address
-                        </Button>
-                      </Box>
-                    )}
-                  </>
-                ) : (
-                  <WalletSelect wallet={wrapWallet} onChange={updateWrapWallet} />
-                )}
-              </>
-            )}
+            <InputLabel id="is-override">Override Wallet?</InputLabel>
+            <Switch checked={Boolean(isOverridden)} onChange={(e) => updateIsOverridden(e.target.checked)} />
           </Box>
-          {(EView.OVERRIDE === view || EView.DEBUG === view) && (
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <InputLabel id="is-override">Override Wallet?</InputLabel>
-              <Switch checked={Boolean(isOverridden)} onChange={(e) => updateIsOverridden(e.target.checked)} />
-            </Box>
-          )}
-          {isOverridden && (EView.OVERRIDE === view || EView.DEBUG === view) && (
-            <WalletSelect label="" wallet={overrideWallet} onChange={updateOverrideWallet} />
-          )}
-          {EView.ADDRESS_BOOK === view && (
-            <AddressBookComponent {...{
-              addressBook, removeFromAddressBook, addOrUpdateAddressBookItem,
-              impersonatedAddress
-            }}
-              setImpersonatedAddress={updateImpersonatedWallet}
-            />
-          )}
-          {EView.LOG_VIEWER === view && (
-            <LogViewerComponent />
-          )}
-          {EView.P2P_CONNECT === view && (
-            <P2PConnections />
-          )}
-        </Container>
-      </P2PProvider>
+        )}
+        {isOverridden && (EView.OVERRIDE === view || EView.DEBUG === view) && (
+          <WalletSelect label="" wallet={overrideWallet} onChange={updateOverrideWallet} />
+        )}
+        {EView.ADDRESS_BOOK === view && (
+          <AddressBookComponent {...{
+            addressBook, removeFromAddressBook, addOrUpdateAddressBookItem,
+            impersonatedAddress
+          }}
+            setImpersonatedAddress={updateImpersonatedWallet}
+          />
+        )}
+        {EView.LOG_VIEWER === view && (
+          <LogViewerComponent />
+        )}
+        {EView.P2P_CONNECT === view && (
+          <P2P_PopupButton />
+        )}
+      </Container>
     </ThemeProvider>
   );
 };
@@ -289,7 +286,6 @@ const Header = ({ title }: { title: string }) => (
       flexDirection: 'row',
     }}
   >
-    {/* <Avatar sx={{ ...avatarSyle }} > */}
     <SorbetAvatar>
       <img src="sorbet.png" />
     </SorbetAvatar>
@@ -301,8 +297,11 @@ const Header = ({ title }: { title: string }) => (
 
 /** Simple Menu Bar Component with switch state managed externally  */
 const MenuBar = ({ view, setView }: { view: EView, setView: (v: EView) => void }) => {
-
-  const { isConnecting, isConnected } = useP2PStatus()
+  const [isConnected, setIsConnected] = useState(false)
+  useEffect(() => {
+    const listener = makeStorageChangeListener(P2PStorageKeys.P2P_IS_CONNECTED, (isConnected: boolean) => setIsConnected(isConnected), true, "")
+    return () => { listener() }
+  }, [])
   return (
     <Stack direction="row" spacing={4} sx={{ marginTop: 2 }}>
       <ToggleButtonGroup
@@ -322,7 +321,7 @@ const MenuBar = ({ view, setView }: { view: EView, setView: (v: EView) => void }
           <AddressBookIcon />
         </ToggleButton>
         <ToggleButton value={EView.P2P_CONNECT} aria-label="center aligned">
-          {isConnecting ? <P2PConnectIcon color="primary" /> : isConnected ? <P2PConnectIcon color="success" /> : <P2PConnectIcon />}
+          {isConnected ? <P2PConnectIcon color="success" /> : <P2PConnectIcon />}
         </ToggleButton>
         <ToggleButton value={EView.LOG_VIEWER} aria-label="left aligned">
           <LogViewerIcon />

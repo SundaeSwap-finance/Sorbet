@@ -11,8 +11,8 @@ export const CustomResponseStorageKeys = {
 /** CIP-45 aka P2P Connect, or Peer Connect */
 export type P2PStorageKeys = typeof P2PStorageKeys[keyof typeof P2PStorageKeys]
 export const P2PStorageKeys = {
-  P2P_PEER_ID: 'peerId',
-  P2P_SEED: 'p2pSeed'
+  P2P_SEEDS: 'p2p_seeds',
+  P2P_IS_CONNECTED: 'p2p_isConnected',
 } as const;
 
 /**

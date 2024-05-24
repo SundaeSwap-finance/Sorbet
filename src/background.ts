@@ -22,11 +22,13 @@ const blockfrostCache: any = {
   utxos: {},
 };
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   (async () => {
     const response = await handleRequest(request);
-    response.id = request.id;
-    sendResponse(response);
+    if (response) {
+      response.id = request.id;
+      sendResponse(response);
+    }
   })();
   return true;
 });
@@ -73,6 +75,9 @@ async function callBlockfrost(mainnet: Boolean, path: string, params: Record<str
 async function handleRequest(request: any) {
   Log.App.Message("handleRequest", request)
   switch (request.action) {
+    case "p2p_popup_exists": {
+      return false
+    }
     case "addToAddressBook": {
       console.log("Sorbet: adding to address book")
       const { address } = request
@@ -106,11 +111,10 @@ async function handleRequest(request: any) {
       return { shouldScanForAddresses };
     }
     case "query_walletConfig": {
-      const { walletType, impersonatedAddress, wallet, peerId } = await getFromStorage([
+      const { walletType, impersonatedAddress, wallet } = await getFromStorage([
         "wallet",
         "impersonatedAddress",
         "walletType",
-        P2PStorageKeys.P2P_PEER_ID,
       ]);
       const network = impersonatedAddress?.startsWith("addr_test") ? 0 : 1;
       return {
@@ -118,7 +122,6 @@ async function handleRequest(request: any) {
         wallet,
         impersonatedAddress,
         network,
-        peerId,
       };
     }
     case "request_getUsedAddresses": {

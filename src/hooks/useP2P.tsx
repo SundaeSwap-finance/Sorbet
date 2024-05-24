@@ -1,177 +1,194 @@
 import { CardanoPeerConnect } from "@fabianbormann/cardano-peer-connect";
-import { IConnectMessage, IDAppInfos } from "@fabianbormann/cardano-peer-connect/dist/src/types";
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { initP2PClient } from "../modules/cip45-peer-connect";
+import { IConnectMessage } from "@fabianbormann/cardano-peer-connect/dist/src/types";
+import React, { createContext, useContext, useEffect, useMemo, useReducer, useState } from 'react';
+import { P2PConnection, P2PConnectionState, SorbetPeerConnect } from "../modules/cip45-peer-connect";
 import { Log } from "../utils/log_util";
-import { P2PStorageKeys, makeStorageChangeListener } from "../utils/storage";
+import { P2PStorageKeys, getFromStorage } from "../utils/storage";
 
-interface P2PState extends P2PConnectionsState {
-  isReady: boolean,
-  p2pClient: CardanoPeerConnect | undefined,
-  connectP2P: () => void,
-  disconnectP2P: () => void,
-  peerId: string | undefined,
-  savePeerId: (peerId: string) => void,
-  identicon?: React.MutableRefObject<string | null>,
-  p2pSeed: string | undefined,
-
-  isConnecting: boolean,
-  isConnected: boolean,
-  connectionState: ConnectionState,
-  connectMessage: IConnectMessage | undefined,
+/**  */
+interface P2PState {
+  p2pConnections: P2PConnectionMap,
+  removeP2PConnection: (peerId: string) => void
+  connectP2P: (peerId: string) => void,
+  disconnectP2P: (peerId: string) => void,
 }
 
-export interface P2PConnection extends IDAppInfos {
-  identicon: React.MutableRefObject<string | null>,
+/** P2P Connection state structure  */
+interface P2PConnectionMap {
+  [peerId: string]: {
+    seed?: string, connection?: P2PConnection, p2pClient?: CardanoPeerConnect
+  }
+  | undefined
 }
-export interface P2PConnectionsState {
-  p2pConnections: P2PConnection[], setP2pConnections: (c: P2PConnection[]) => void,
-  addP2pConnection: (c: P2PConnection) => void, removeP2pConnection: (peerId: string) => void
+
+/** P2P Seed storage structure  */
+interface P2PSeedMap { [peerId: string]: string | null }
+
+/** Reducer Actions & Action Types  */
+interface AnyAction<T = string, P = any> {
+  type: T, payload: P,
 }
+type ActionType = 'parseSeeds' | 'setConnections' | 'handleConnectionStateChange' | 'removeConnection'
 
-
-type ConnectionState = 'disconnected' | 'connected' | 'connecting'
-
+/** Setup Context */
 export const P2PContext = createContext<P2PState>({
-  isReady: false,
-  connectionState: 'disconnected', connectMessage: undefined, isConnected: false, isConnecting: false,
-  p2pClient: undefined, p2pSeed: undefined, peerId: undefined,
-  connectP2P: () => { }, disconnectP2P: () => { }, savePeerId: () => { },
-  p2pConnections: [],
-  setP2pConnections: () => { }, addP2pConnection: () => { }, removeP2pConnection: () => { },
+  p2pConnections: {},
+  connectP2P: (peerId: string) => { }, disconnectP2P: (peerId: string) => { }, removeP2PConnection: () => { },
 });
-
-/** Hooks for using P2PContext at various granularity levels */
 export const useP2P = () => useContext(P2PContext)
-export const useP2PStatus = () => {
-  const { isConnected, isConnecting, connectMessage, connectionState } = useContext(P2PContext)
-  return { isConnected, isConnecting, connectMessage, connectionState }
-}
-/** Component providing P2PContext */
+
+/** P2P Context Provider */
 export function P2PProvider(props: { children: JSX.Element | JSX.Element[] }) {
-  /** Retrieve P2P values from storage and update state  */
+  /** Connection & dApp state reducer */
+  function reducer(state: P2PConnectionMap, { type, payload }: AnyAction<ActionType>): P2PConnectionMap {
+    if (type === 'parseSeeds') {
+      const seedMap = payload
+      return parseSeeds(state, seedMap)
+    } else if (type === 'setConnections') {
+      const newConnections = payload
+      return { ...newConnections }
+    } else if (type === 'handleConnectionStateChange') {
+      const { peerId, connection } = payload
+      const newConnections = { ...state }
+      newConnections[peerId] = { ...newConnections[peerId], connection }
+      saveP2PSeeds(newConnections)
+      saveP2PIsConnected(newConnections)
+      return newConnections
+    } else if (type === 'removeConnection') {
+      const peerId = payload.peerId
+      const newConnections = { ...state }
+      delete newConnections[peerId]
+      saveP2PSeeds(newConnections)
+      return newConnections
+    }
+    throw Error('Unknown action in useP2P reducer.');
+  }
+  const [state, dispatch] = useReducer(reducer, {})
+
+  async function loadSeeds() {
+    const seeds = await getSeedsFromStorage()
+    dispatch({ type: 'parseSeeds', payload: seeds })
+  }
   useEffect(() => {
-    const listeners = [
-      makeStorageChangeListener(P2PStorageKeys.P2P_PEER_ID, _setPeerId, true, ""),
-      makeStorageChangeListener(P2PStorageKeys.P2P_SEED, _setP2pSeed, true)
-    ]
-    return () => { listeners.forEach(lstnr => lstnr()) }
+    if (Object.keys(state).length === 0)
+      loadSeeds()
   }, [])
-  const [peerId, _setPeerId] = useState<string>()
-  const savePeerId = (peerId?: string) => {
-    chrome.storage.sync.set({ [P2PStorageKeys.P2P_PEER_ID]: peerId });
-  }
-  const [p2pSeed, _setP2pSeed] = useState<string>()
-  const saveP2pSeed = (p2pSeed?: string) => {
-    chrome.storage.sync.set({ [P2PStorageKeys.P2P_SEED]: p2pSeed }
-    );
-  }
-  /** Connection State Helpers  */
-  const [connectMessage, setConnectedMessage] = useState<IConnectMessage>()
-  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
-  const [isConnected, setIsConnected] = useState(connectionState === "connected")
-  const [isConnecting, setIsConnecting] = useState(connectionState === "connecting")
-  useEffect(() => {
-    setIsConnected(connectionState === "connected")
-    setIsConnecting(connectionState === "connecting")
-  }, [connectionState])
 
-  /** P2P Client */
-  const [p2pClient, _setP2pClient] = useState<CardanoPeerConnect | undefined>(() => {
-    /** Setup Exit Listeners to Disconnect */
-    window.addEventListener('beforeunload', (event: any) => {
-      p2pClient?.disconnect(peerId!);
-    })
-    const _setConnectionState = (state: ConnectionState, m: IConnectMessage) => {
-      setConnectionState(state)
-      setConnectedMessage(m)
-      if (p2pClient) {
-        identicon.current = p2pClient.getIdenticon()
+  /** Storage Util */
+  const getSeedsFromStorage = async () =>
+    (await getFromStorage([P2PStorageKeys.P2P_SEEDS]))[P2PStorageKeys.P2P_SEEDS] as P2PSeedMap
+
+  function saveP2PSeeds(state: P2PConnectionMap) {
+    const newSeeds = Object.entries(state).reduce((acc, [peerId, c]) => {
+      acc[peerId] = c?.seed === undefined ? null : c.seed
+      return acc
+    }, {} as P2PSeedMap)
+    chrome.storage.sync.set({ [P2PStorageKeys.P2P_SEEDS]: newSeeds })
+  }
+  function saveP2PIsConnected(p2pConnections: P2PConnectionMap) {
+    const isConnected = Object.values(p2pConnections).filter(c => c?.connection?.connected).length > 0
+    chrome.storage.sync.set({ [P2PStorageKeys.P2P_IS_CONNECTED]: isConnected })
+  }
+
+  /** handle p2p connect state changes */
+  function handleConnectionStateChange(p2pClient: CardanoPeerConnect | undefined, _connectionState: P2PConnectionState, connectMessage: IConnectMessage) {
+    const connection = connectMessage as P2PConnection
+    const peerId = connection.dApp.address
+    connection.dApp.identicon = p2pClient?.getIdenticon() ?? null
+    if (!peerId)
+      return
+    dispatch({ type: "handleConnectionStateChange", payload: { peerId, connection } })
+  }
+
+  /** parse seeds from storage */
+  function parseSeeds(state: P2PConnectionMap, seedMap: P2PSeedMap): P2PConnectionMap {
+    const newConnections = { ...state }
+    Object.entries(seedMap).forEach(([peerId, seed]) => {
+      const existingConnection = newConnections[peerId]
+      if (existingConnection) {
+        newConnections[peerId] = { ...existingConnection, seed: seed ?? undefined }
+      } else {
+        newConnections[peerId] = {
+          seed: seed ?? undefined,
+          p2pClient: SorbetPeerConnect.initP2PClient(handleConnectionStateChange, seed ?? undefined),
+          connection: {
+            connected: false, error: false,
+            dApp: {
+              address: peerId, name: '', url: '', identicon: null,
+            },
+          }
+        }
       }
-      addP2pConnection({
-        ...m.dApp, identicon
-      })
+    })
+    return newConnections
+  }
+
+  /** Peer Connect controls: connect / disconnect / remove */
+  function connectP2P(peerId: string) {
+    const allConnections = state
+    let existingConnection = allConnections[peerId] ?? {};
+    let p2pClient = existingConnection.p2pClient
+    if (!p2pClient) {
+      const seed = existingConnection.seed
+      p2pClient = SorbetPeerConnect.initP2PClient(handleConnectionStateChange, seed ?? undefined)
+      existingConnection = { ...existingConnection, p2pClient }
     }
-    return initP2PConnectClient(_setConnectionState, p2pSeed)
-  })
-
-  const identicon = useRef<string | null>(null);
-
-  /** handle connect / disconnect  */
-  const connectP2P = () => {
     if (p2pClient && peerId && peerId !== "") {
-      setConnectionState('connecting')
       const seed = p2pClient.connect(peerId)
-      saveP2pSeed(seed)
+      const newConnections = { ...allConnections, [peerId]: { ...existingConnection, seed } };
+      dispatch({ type: "setConnections", payload: newConnections })
+      Log.I("useP2P: connect p2p called", { peerId, seed, newConnections })
     } else {
-      setConnectionState('disconnected')
+      Log.W("useP2P: connectP2P called without neccessary args", { peerId, p2pClient })
     }
-  }
-  const disconnectP2P = () => {
-    try {
-      p2pClient?.disconnect(peerId!)
-    } catch (e) {
-      Log.E("Error while disconnecting from p2p peer connect client", e)
-    }
-    clearConnectionState()
-  }
-  const clearConnectionState = () => {
-    saveP2pSeed(undefined)
-    identicon.current = null
-    setConnectedMessage(undefined)
-    setConnectionState('disconnected')
-    Log.D("after clearConnectionState")
+    return { p2pClient }
   }
 
-  const [p2pConnections, setP2pConnections] = useState<P2PConnection[]>([])
-  const addP2pConnection = (c: P2PConnection) => setP2pConnections([...p2pConnections, c])
-  const removeP2pConnection = (peerId: string) => { setP2pConnections([...p2pConnections.filter(c => c.address !== peerId)]) }
+  function disconnectP2P(peerId: string) {
+    const allConnections = state
+    const existingConnection = allConnections[peerId]
+    const p2pClient = existingConnection?.p2pClient
+    Log.I("useP2P: disconnecting p2p with peerId:", peerId, { allConnections, existingConnection, p2pClient })
+    if (p2pClient && peerId && peerId !== "") {
+      try {
+        p2pClient?.disconnect(peerId)
+      } catch (e) {
+        Log.E("Error while disconnecting from p2p peer connect client", e)
+      }
+      if (existingConnection?.connection) {
+        const newConnections = {
+          ...allConnections,
+          [peerId]: { ...existingConnection, connection: { ...existingConnection.connection, connected: false } }
+        }
+        dispatch({ type: "setConnections", payload: newConnections })
+      }
+    } else {
+      Log.W("useP2P: disconnectP2P called without neccessary args", { peerId, p2pClient })
+    }
+    return p2pClient
+  }
+  useEffect(() => {
+    /** Setup Exit Listeners to Disconnect */
+    const disconnectHandler = (event: any) => {
+      Object.entries(state).forEach(([peerId, c]) => c?.p2pClient?.disconnect(peerId))
+      saveP2PIsConnected({})
+    }
+    window.addEventListener('beforeunload', disconnectHandler)
+    return () => {
+      window.removeEventListener("beforeunload", disconnectHandler);
+    }
+  }, [])
+
+  function removeP2PConnection(peerId: string) {
+    dispatch({ type: "removeConnection", payload: { peerId } })
+  }
 
   const context = useMemo(() => ({
-    p2pClient, connectP2P, disconnectP2P,
-    peerId, savePeerId,
-    connectMessage, identicon, p2pSeed,
-    isConnected, isConnecting, connectionState,
-    p2pConnections, setP2pConnections, addP2pConnection, removeP2pConnection,
-    isReady: true
+    connectP2P, disconnectP2P,
+    p2pConnections: state, removeP2PConnection
   }), [
-    p2pClient, connectP2P, disconnectP2P,
-    peerId, savePeerId,
-    connectMessage, identicon, p2pSeed,
-    isConnected, isConnecting, connectionState,
-    p2pConnections, setP2pConnections, addP2pConnection, removeP2pConnection
+    connectP2P, disconnectP2P,
+    state, removeP2PConnection
   ])
   return <P2PContext.Provider value={context}>{props.children}</P2PContext.Provider>
-}
-
-const initP2PConnectClient = (
-  setConnectionState: (state: ConnectionState, m: IConnectMessage) => void,
-  p2pSeed?: string
-) => {
-
-  const p2pClient = initP2PClient(p2pSeed)
-
-  const logMessage = (func: string, connectMessage: IConnectMessage) =>
-    Log.App.P2PConnect(`${func} hook called with message:`, connectMessage)
-
-  /** Setup connection status listeners */
-  p2pClient.setOnConnect((connectMessage: IConnectMessage) => {
-    logMessage("OnConnect", connectMessage)
-    setConnectionState('connected', connectMessage)
-  });
-
-  p2pClient.setOnDisconnect((connectMessage: IConnectMessage) => {
-    logMessage("OnDisconnect", connectMessage)
-    setConnectionState('disconnected', connectMessage)
-  });
-
-  p2pClient.setOnServerShutdown((connectMessage: IConnectMessage) => {
-    logMessage("ServerShutdown", connectMessage)
-    setConnectionState('disconnected', connectMessage)
-  });
-
-  p2pClient.setOnApiInject((connectMessage: IConnectMessage) => {
-    logMessage("ApiInject", connectMessage)
-  });
-  return p2pClient
 }
