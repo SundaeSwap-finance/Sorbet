@@ -5,12 +5,12 @@ import { P2PConnection, P2PConnectionState, SorbetPeerConnect } from "../modules
 import { Log } from "../utils/log_util";
 import { P2PStorageKeys, getFromStorage } from "../utils/storage";
 
-/**  */
+/** Exposed P2P Context State */
 interface P2PState {
   p2pConnections: P2PConnectionMap,
-  removeP2PConnection: (peerId: string) => void
   connectP2P: (peerId: string) => void,
   disconnectP2P: (peerId: string) => void,
+  removeP2PConnection: (peerId: string) => void
 }
 
 /** P2P Connection state structure  */
@@ -33,7 +33,9 @@ type ActionType = 'parseSeeds' | 'setConnections' | 'handleConnectionStateChange
 /** Setup Context */
 export const P2PContext = createContext<P2PState>({
   p2pConnections: {},
-  connectP2P: (peerId: string) => { }, disconnectP2P: (peerId: string) => { }, removeP2PConnection: () => { },
+  connectP2P: (peerId: string) => { },
+  disconnectP2P: (peerId: string) => { },
+  removeP2PConnection: () => { },
 });
 export const useP2P = () => useContext(P2PContext)
 
