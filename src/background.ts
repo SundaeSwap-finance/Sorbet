@@ -2,10 +2,10 @@ import { STORE_WALLET_LOG_ACTION } from "./modules/walletLog";
 import { processWalletLogRequest } from "./modules/walletLogStorageHandler";
 import { EWalletType } from "./types";
 import { stakeKeyFromAddress } from "./utils/addresses";
-import { computeBalanceFromQuantities } from "./utils/balance";
+import { assetsToEncodedBalance, computeBalanceFromQuantities } from "./utils/balance";
 import { Log } from "./utils/log_util";
 import { CustomResponseStorageKeys, getFromStorage } from "./utils/storage";
-import { encodeUtxos } from "./utils/utxo";
+import { MultiAssetAmount, encodeUtxos } from "./utils/utxo";
 
 interface Asset {
   unit: string;
@@ -143,6 +143,40 @@ async function handleRequest(request: any) {
         id: request.id,
         addresses,
       };
+    }
+    case "request_getCollateral": {
+      const storage = await getFromStorage({
+        [CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED]: false,
+        [CustomResponseStorageKeys.MOCK_UTXOS]: [],
+      });
+      const isCustomResponseEnabled = storage[CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED]
+      const mockUtxos = storage[CustomResponseStorageKeys.MOCK_UTXOS]
+
+      let collateral = [
+        "82825820d060df960efa59b66ac8baedc42c61580128b1c75241ca74ed927708442d5df705825839014476a6f50d917710191e90ecc8e292fefc53dbedb2104837306d4e77c0ff5904e5d29c1d85ef193acbe0c6eb7cddbcf3a0d2a593e96931c41a004c4b40",
+        "82825820cd407d5ddcfd7c7de172c16a2eb6cadcbac768a5e46bee139dc35fa756dfebf2048258390159c7da059a3259670ec5975ea426ac46be2850e8399fc558d0245d70c0ff5904e5d29c1d85ef193acbe0c6eb7cddbcf3a0d2a593e96931c41a004c4b40",
+        "82825820cb7f7e9a68962bcded8b694b85e7911870c95aa9d3e2b02611201f71a5d06bd50482583901ef393a53e4368740c68bfda46de1300fa7229ac90cca0ad5c1ddb17bc0ff5904e5d29c1d85ef193acbe0c6eb7cddbcf3a0d2a593e96931c41a004c4b40"
+      ]
+      if (isCustomResponseEnabled) {
+        let min: number | undefined, collateralAmnt: MultiAssetAmount | undefined
+        (mockUtxos as MultiAssetAmount[]).forEach(amnt => {
+          const next = Number(amnt.coin) - 5000000
+          if (next < 0)
+            return
+          if (!min || next < min) {
+            min = next
+            collateralAmnt = amnt
+          }
+        })
+        if (collateralAmnt) {
+          collateral = [
+            assetsToEncodedBalance(collateralAmnt)
+          ]
+        }
+      }
+      return {
+        collateral
+      }
     }
     case "request_getBalance": {
       const storage = await getFromStorage({
