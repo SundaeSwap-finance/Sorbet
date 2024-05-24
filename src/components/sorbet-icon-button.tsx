@@ -9,14 +9,13 @@ export const SorbetIconButton = ({ tooltipTitle, children, ...rest }: SorbetIcon
   <IconButton
     sx={{ width: 48, height: 48 }}
     aria-label={tooltipTitle}
-    key={2}
     {...rest}
   >
-    {/* <Tooltip
+    <Tooltip
       title={tooltipTitle}
       placement='top'
-    > */}
+    >
       {children}
-    {/* </Tooltip> */}
+    </Tooltip>
   </IconButton>
 )

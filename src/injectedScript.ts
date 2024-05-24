@@ -6,7 +6,7 @@ import { sendMessageToBackground } from "./utils/sendMessageToBackground";
 try {
   window.addEventListener("__sorbet_extensionBaseURL", async (event: CustomEventInit) => {
 
-    Log.App.Init("Starting..");
+    Log.App.Init("injectedScript Starting..");
 
     // Check if the window.cardano object exists or create it
     if (typeof window.cardano === "undefined") {
@@ -28,7 +28,7 @@ try {
       Log.D("address scanning disabled, this can be changed in the extension options")
     }
 
-    Log.App.Init("Complete.");
+    Log.App.Init("injectedScript Complete.");
   });
 
 } catch (e) {
