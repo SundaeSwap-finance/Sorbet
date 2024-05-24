@@ -1,110 +1,126 @@
 import DiconnectIcon from "@mui/icons-material/Power";
 import ConnectIcon from "@mui/icons-material/PowerOutlined";
-import { Alert, Box, Card, CardContent, CardMedia, TextField, Typography } from "@mui/material";
-import P2PRefreshingIcon from '@mui/material/CircularProgress';
-import React from "react";
-import { P2PConnection, useP2P } from "../hooks/useP2P";
-import { SorbetIconButton } from "./sorbet-icon-button";
+import RemoveIcon from "@mui/icons-material/RemoveCircle";
+import EmptyDAppIcon from "@mui/icons-material/TerminalOutlined";
+import { Box, Card, CardContent, CardMedia, TextField, Typography } from "@mui/material";
+import React, { useEffect, useRef, useState } from "react";
+import { useP2P } from "../../hooks/useP2P";
+import { P2PConnection, P2PDapp } from "../../modules/cip45-peer-connect";
+import { SorbetIconButton } from "../sorbet-icon-button";
+import { ConnectStateComponent } from "./p2p-connect-state";
 
 /** Component with P2P Connection & Peer Id state managed externally  */
+export const P2PConnectComponent = () => (
+  <>
+    <P2PConnectInput />
+    <P2PConnectionsList />
+  </>
+)
 
-export const P2PConnections = () => {
-  const { isReady, p2pConnections } = useP2P()
-
-  return isReady && (
-    <>
-      <P2PConnectInput />
-      {p2pConnections.length < 1 && <ConnectStateComponent />}
-      <P2PConnectionsList />
-      <P2PConnectionStatus />
-    </>
-  )
-}
-
-const P2PConnectionsList = () => {
-  const { p2pConnections } = useP2P() ?? {}
-  return (
-    <Box>
-      {p2pConnections?.map(c => (
-        <Box key={c.address}>
-          <DAppInfosCard  {...{ ...c }} />
-        </Box>
-      ))}
-    </Box>
-  )
-}
+/** Component to manage newly entered peerId state manually */
 export const P2PConnectInput = () => {
-  const { peerId, savePeerId } = useP2P()
+  const [peerId, setPeerId] = useState<string>()
   return (
     <TextField
       fullWidth
       label="Peer Id"
       value={peerId ?? ''}
       style={{ marginBottom: 12, marginTop: 12 }}
-      onChange={(e) => savePeerId(e.target.value)}
+      onChange={(e) => setPeerId(e.target.value)}
       InputProps={{
         endAdornment: (
-          <P2PConnectButton />
+          <P2PConnectButton peerId={peerId} key={0} />
         )
       }}
     />
   )
 }
 
-/**
- * Component to display current P2P Connection Status
- */
-const ConnectStateComponent = () => {
-  const { isConnected, isConnecting, connectionState } = useP2P()
-  return (
-    <Box sx={{ display: 'flex', gap: 3 }}>
-      <Alert severity={isConnected ? 'success' : isConnecting ? 'info' : 'warning'}>{connectionState[0].toUpperCase() + connectionState.slice(1)}</Alert>
-      <span>{isConnecting && <P2PRefreshingIcon />}</span>
-    </Box>
-  )
-}
-const P2PConnectionStatus = () => {
-  const { connectMessage, p2pSeed } = useP2P()
-  return (
-    <>
-      <Box>
-        {p2pSeed && <Box sx={{ whiteSpace: 'nowrap' }}>p2pSeed: {p2pSeed}</Box>}
-      </Box>
-      <div>
-        {connectMessage?.error && connectMessage?.errorMessage ? `P2P Error: ${connectMessage.error} ${connectMessage.errorMessage}` : undefined}
-      </div>
-    </>
-  )
-}
-function P2PConnectButton(): React.ReactNode {
-  const { isConnected, isConnecting, connectP2P, disconnectP2P, peerId } = useP2P()
+/** Component to manage P2P connect / disconnect commands */
+function P2PConnectButton({ peerId }: { peerId?: string }): React.ReactNode {
+  const { connectP2P, disconnectP2P, p2pConnections } = useP2P()
+  const [isConnected, setIsConnected] = useState(false)
+  useEffect(() => {
+    if (!peerId)
+      return
+    setIsConnected(p2pConnections[peerId]?.connection?.connected === true)
+  }, [peerId, p2pConnections])
+  const disabled = peerId === undefined || peerId === ''
   return <SorbetIconButton
-    key={0}
-    tooltipTitle={isConnected || isConnecting ? "Disconnect P2P" : "Connect P2P"}
-    disabled={peerId === undefined || peerId === ''}
-    color={peerId === undefined && peerId === '' ? "default" : isConnected ? "success" : "primary"}
+    tooltipTitle={isConnected ? "Disconnect P2P" : "Connect P2P"}
+    disabled={disabled}
+    color={disabled ? "default" : isConnected ? "success" : "primary"}
     onClick={() => {
-      if (isConnected || isConnecting) {
-        disconnectP2P();
+      if (!peerId) {
+        return
+      }
+      if (isConnected) {
+        disconnectP2P(peerId);
       } else {
-        connectP2P();
+        connectP2P(peerId);
       }
     }}
   >
-    {isConnected || isConnecting ? <DiconnectIcon /> : <ConnectIcon />}
+    {isConnected ? <DiconnectIcon /> : <ConnectIcon />}
   </SorbetIconButton>;
 }
 
-const DAppInfosCard = ({ name, address, url, identicon }: P2PConnection) => {
+/** Component to display all current P2P connections & dApps */
+const P2PConnectionsList = () => {
+  const { p2pConnections, removeP2PConnection } = useP2P() ?? {}
+  return (
+    <Box>
+      {Object.entries(p2pConnections).map(([peerId, c]) => {
+        const { seed, connection } = c ?? {}
+        return (
+          <Box key={peerId}>
+            <DAppConnectionCard {...{ peerId, seed, connection, removeP2PConnection }} />
+          </Box>
+        )
+      })}
+    </Box>
+  )
+}
+
+interface DAppConnectionCardProps {
+  peerId: string, seed?: string, connection?: P2PConnection, removeP2PConnection: (peerId: string) => void
+}
+/** Component to display P2P connection & dApp details */
+function DAppConnectionCard({ peerId, seed, connection, removeP2PConnection }: DAppConnectionCardProps) {
+  const { address: connectionAddress, connected, autoConnect, error, errorMessage, dApp } = connection ?? {}
   return (
     <Card sx={{ display: 'flex', flexDirection: 'column' }}>
-      <Card sx={{ display: 'flex' }}>
-        <CardMedia
+      <DAppCardBody dApp={dApp ?? { address: peerId }} />
+      <Typography variant="body2" fontSize={10} color="text.secondary" component="div">
+        Connection Address: {connectionAddress}
+      </Typography>
+      <ConnectStateComponent connected={connected} />
+      <div>Auto Connect: {autoConnect ? 'enabled' : 'disabled'}</div>
+      <div>Seed {seed}</div>
+      <div>{(error || errorMessage) && `P2P Error Detected:`}</div>
+      <div>{(error || errorMessage) && (errorMessage ?? 'no detail provided')}</div>
+      <SorbetIconButton
+        tooltipTitle="Remove P2P Connection"
+        onClick={() => removeP2PConnection(peerId)}
+      >
+        <RemoveIcon />
+      </SorbetIconButton>
+    </Card>
+  )
+}
+
+/** Component to display P2P dApp details */
+function DAppCardBody({ dApp: { name, address: dappAddress, url, identicon } }: { dApp: Partial<P2PDapp> }) {
+  const identiconRef = identicon ? useRef<string | null>(identicon)?.current : null;
+  return (
+    <>
+      <Box sx={{ display: 'flex' }}>
+        {identiconRef ? <CardMedia
           component="img"
           sx={{ width: '96px', height: '96px' }}
-          {...identicon?.current ? { image: identicon?.current } : {}}
+          {...identiconRef ? { image: identiconRef } : {}}
           alt={`${name} - DApp identicon`}
-        />
+        /> : <EmptyDAppIcon sx={{ width: '96px', height: '96px' }} />}
         <Box sx={{ display: 'flex', flexDirection: 'column' }}>
           <CardContent sx={{ flex: '1 0 auto' }}>
             <Typography component="div" variant="h5">
@@ -114,24 +130,14 @@ const DAppInfosCard = ({ name, address, url, identicon }: P2PConnection) => {
               {url}
             </Typography>
           </CardContent>
-          <ConnectStateComponent />
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', pl: 1, pb: 1 }}>
-          <P2PConnectButton />
-          {/* <IconButton aria-label="previous">
-            {theme.direction === 'rtl' ? <SkipNextIcon /> : <SkipPreviousIcon />}
-          </IconButton>
-          <IconButton aria-label="play/pause">
-            <PlayArrowIcon sx={{ height: 38, width: 38 }} />
-          </IconButton>
-          <IconButton aria-label="next">
-            {theme.direction === 'rtl' ? <SkipPreviousIcon /> : <SkipNextIcon />}
-          </IconButton> */}
+          <P2PConnectButton peerId={dappAddress} />
         </Box>
-      </Card>
-      <Typography variant="body2" color="text.secondary" component="div">
-        Address: {address}
+      </Box>
+      <Typography variant="body2" fontSize={10} color="text.secondary" component="div">
+        dApp Address (Peer ID): {dappAddress}
       </Typography>
-    </Card>
+    </>
   )
 }
