@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import DebugIcon from "@mui/icons-material/Analytics";
 import AddressBookIcon from "@mui/icons-material/MenuBook";
 import LogViewerIcon from "@mui/icons-material/DocumentScanner";
+import UtXOBuilderIcon from "@mui/icons-material/ListAlt";
 import OverrideIcon from "@mui/icons-material/Settings";
 import {
   InputLabel, Stack, Switch, ToggleButton, ToggleButtonGroup, Box,
@@ -17,6 +18,8 @@ import { getFromStorage } from "./utils/storage";
 import { isValidAddress } from "./utils/addresses";
 import { LogViewerComponent } from "./components/log-viewer";
 import { addItemToAddressBook, addOrUpdateItemInAddressBook, deleteFromAddressBook, parseAddressBookFromStorage } from "./modules/addressBookStorage";
+import { useCustomResponse } from "./hooks/useCustomResponse";
+import UTxOBuilder from "./components/utxo-builder";
 
 const theme = createTheme({ ...autocompleteThemeOverrides });
 
@@ -55,7 +58,6 @@ const Popup = () => {
 
   useEffect(() => {
     const storageChangedListener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-      // console.log("changes", changes); // {key : { newValue: 'value' }}
       const shouldUpdateState = changes.impersonatedAddress && changes.impersonatedAddress.newValue !== impersonatedAddress
       if (shouldUpdateState) {
         setImpersonatedAddress(changes.impersonatedAddress.newValue)
@@ -145,12 +147,12 @@ const Popup = () => {
     updateImpersonatedWallet(newValue);
   };
   const addToAddressBook = (newValue: string): void => addItemToAddressBook(newValue, setAddressBook)
-  
-  const addOrUpdateAddressBookItem = (newItem: AddressBookItem) => 
+
+  const addOrUpdateAddressBookItem = (newItem: AddressBookItem) =>
     addOrUpdateItemInAddressBook(newItem, (newAddressBook) => { setAddressBook([...newAddressBook]) })
-  
+
   const removeFromAddressBook = (valueToRemove: string) => deleteFromAddressBook(valueToRemove, setAddressBook)
-  
+
   return (
     <ThemeProvider theme={theme}>
       <Container component="main" style={{ width: 440, minHeight: 440 }}>
@@ -163,7 +165,7 @@ const Popup = () => {
             alignItems: "left",
           }}
         >
-          <WalletStatus {...{walletType, isOverridden, overrideWallet}} />
+          <WalletStatus {...{ walletType, isOverridden, overrideWallet }} />
           {EView.OVERRIDE === view && (
             <>
               <TextField
@@ -219,6 +221,9 @@ const Popup = () => {
             setImpersonatedAddress={updateImpersonatedWallet}
           />
         )}
+        {EView.UTXO_BUILDER === view && (
+          <UTxOBuilder />
+        )}
         {EView.LOG_VIEWER === view && (
           <LogViewerComponent />
         )}
@@ -230,7 +235,7 @@ const Popup = () => {
 /** Component to Display Wallet Status */
 interface WalletStatusProps { walletType: EWalletType, isOverridden: Boolean, overrideWallet: string }
 const WalletStatus = ({ walletType, isOverridden, overrideWallet }: WalletStatusProps) => (
-  <Typography sx={{marginBottom: 2}} component="p" variant="body2" >
+  <Typography sx={{ marginBottom: 2 }} component="p" variant="body2" >
     <b>Wallet Status:</b> {walletType} {isOverridden ? "" : "NOT"} overriden {overrideWallet}
   </Typography>
 )
@@ -256,30 +261,37 @@ const Header = ({ title }: { title: string }) => (
 )
 
 /** Simple Menu Bar Component with switch state managed externally  */
-const MenuBar = ({ view, setView }: { view: EView, setView: React.Dispatch<React.SetStateAction<EView>> }) => (
-  <Stack direction="row" spacing={4} sx={{ marginTop: 2 }}>
-    <ToggleButtonGroup
-      value={view}
-      exclusive
-      fullWidth
-      onChange={(e, value) => setView(value ?? view ?? EView.OVERRIDE)}
-      aria-label="text alignment"
-    >
-      <ToggleButton value={EView.OVERRIDE} aria-label="right aligned">
-        <OverrideIcon />
-      </ToggleButton>
-      <ToggleButton value={EView.DEBUG} aria-label="center aligned">
-        <DebugIcon />
-      </ToggleButton>
-      <ToggleButton value={EView.ADDRESS_BOOK} aria-label="left aligned">
-        <AddressBookIcon />
-      </ToggleButton>
-      <ToggleButton value={EView.LOG_VIEWER} aria-label="left aligned">
-        <LogViewerIcon />
-      </ToggleButton>
-    </ToggleButtonGroup>
-  </Stack>
-)
+const MenuBar = ({ view, setView }: { view: EView, setView: (v: EView) => void }) => {
+
+  const { isCustomResponseEnabled } = useCustomResponse()
+  return (
+    <Stack direction="row" spacing={4} sx={{ marginTop: 2 }}>
+      <ToggleButtonGroup
+        value={view}
+        exclusive
+        fullWidth
+        onChange={(e, value) => setView(value ?? view ?? EView.OVERRIDE)}
+        aria-label="text alignment"
+      >
+        <ToggleButton value={EView.OVERRIDE} aria-label="right aligned">
+          <OverrideIcon />
+        </ToggleButton>
+        <ToggleButton value={EView.DEBUG} aria-label="center aligned">
+          <DebugIcon />
+        </ToggleButton>
+        <ToggleButton value={EView.ADDRESS_BOOK} aria-label="center aligned">
+          <AddressBookIcon />
+        </ToggleButton>
+        <ToggleButton value={EView.UTXO_BUILDER} aria-label="center aligned">
+          {isCustomResponseEnabled ? <UtXOBuilderIcon color="primary" /> : <UtXOBuilderIcon />}
+        </ToggleButton>
+        <ToggleButton value={EView.LOG_VIEWER} aria-label="left aligned">
+          <LogViewerIcon />
+        </ToggleButton>
+      </ToggleButtonGroup>
+    </Stack>
+  )
+}
 
 const root = createRoot(document.getElementById("root")!);
 
