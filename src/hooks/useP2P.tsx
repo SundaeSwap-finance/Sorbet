@@ -44,7 +44,7 @@ export function P2PProvider(props: { children: JSX.Element | JSX.Element[] }) {
   /** Connection & dApp state reducer */
   function reducer(state: P2PConnectionMap, { type, payload }: AnyAction<ActionType>): P2PConnectionMap {
     if (type === 'parseSeeds') {
-      const seedMap = payload
+      const seedMap = payload as P2PSeedMap | undefined
       return parseSeeds(state, seedMap)
     } else if (type === 'setConnections') {
       const newConnections = payload
@@ -103,9 +103,9 @@ export function P2PProvider(props: { children: JSX.Element | JSX.Element[] }) {
   }
 
   /** parse seeds from storage */
-  function parseSeeds(state: P2PConnectionMap, seedMap: P2PSeedMap): P2PConnectionMap {
+  function parseSeeds(state: P2PConnectionMap, seedMap?: P2PSeedMap): P2PConnectionMap {
     const newConnections = { ...state }
-    Object.entries(seedMap).forEach(([peerId, seed]) => {
+    Object.entries(seedMap ?? {}).forEach(([peerId, seed]) => {
       const existingConnection = newConnections[peerId]
       if (existingConnection) {
         newConnections[peerId] = { ...existingConnection, seed: seed ?? undefined }
