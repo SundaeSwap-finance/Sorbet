@@ -23,11 +23,13 @@ const blockfrostCache: any = {
   utxos: {},
 };
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   (async () => {
     const response = await handleRequest(request);
-    response.id = request.id;
-    sendResponse(response);
+    if (response) {
+      response.id = request.id;
+      sendResponse(response);
+    }
   })();
   return true;
 });
@@ -72,7 +74,11 @@ async function callBlockfrost<R = any>(mainnet: Boolean, path: string, params: R
 }
 
 async function handleRequest(request: any) {
+  Log.App.Message("handleRequest", request)
   switch (request.action) {
+    case "p2p_popup_exists": {
+      return false
+    }
     case "addToAddressBook": {
       console.log("Sorbet: adding to address book")
       const { address } = request

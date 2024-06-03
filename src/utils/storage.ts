@@ -1,22 +1,24 @@
 type StorageKey = P2PStorageKeys | CustomResponseStorageKeys
 
-// Generic interface for sectioned keys
-// interface StorageKeys<SK extends string> { [k: string]: SK }
-
-// Custom UTxO Builder
+/** Custom UTxO Builder */
 export type CustomResponseStorageKeys = typeof CustomResponseStorageKeys[keyof typeof CustomResponseStorageKeys]
 export const CustomResponseStorageKeys = {
   MOCK_UTXOS: 'MOCK_UTXOS',
   CUSTOM_RESPONSE_ENABLED: 'CUSTOM_RESPONSE_ENABLED'
 } as const;
-// CIP-45 aka P2P Connect, or Peer Connect
+
+/** CIP-45 aka P2P Connect, or Peer Connect */
 export type P2PStorageKeys = typeof P2PStorageKeys[keyof typeof P2PStorageKeys]
 export const P2PStorageKeys = {
-  P2P_PEER_ID: 'peerId',
-  P2P_SEED: 'p2pSeed'
+  P2P_SEEDS: 'p2p_seeds',
+  P2P_IS_CONNECTED: 'p2p_isConnected',
 } as const;
 
-
+/**
+ * Retrieve objects from storage
+ * @param keys storage key names to retrieve
+ * @returns 
+ */
 export function getFromStorage(keys: string | string[] | {
   [key: string]: any;
 } | null): Promise<Record<string, any>> {
@@ -54,10 +56,8 @@ export const makeStorageChangeListener = (storageKey: StorageKey, sendUpdate: (n
     )
   }
   const storageChangedListener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-    // Log.D("storage change", changes, storageKey, changes[storageKey], changes[storageKey]?.newValue, changes[storageKey] !== undefined, changes[storageKey]?.newValue !== changes[storageKey]?.oldValue)
     const shouldUpdateState = changes[storageKey] !== undefined && changes[storageKey].newValue !== changes[storageKey].oldValue
     if (shouldUpdateState) {
-      // Log.D("storage change should update", changes, storageKey)
       sendUpdate(changes[storageKey].newValue)
     }
   }
