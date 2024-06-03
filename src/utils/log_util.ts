@@ -1,4 +1,3 @@
-
 type LogLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL' | 'APP'
 let logLevel: LogLevel = 'DEBUG'
 

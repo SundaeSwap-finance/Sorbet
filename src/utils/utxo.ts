@@ -29,7 +29,9 @@ export interface MultiAssetOut {
     output_index: any,
     amount: MultiAssetAmount,
 };
-export interface MultiAssetAmount { coin: number, multi_assets?: { [policyId: string]: { [tokenName: string]: number } } }
+export interface MultiAssetAmount<C = number> {
+    coin: C,
+    multi_assets?: { [policyId: string]: { [tokenName: string]: number } } }
 
 export function utxosToHexArray(utxos: UTxOWithAssets[]) {
     const encodedUTXOs = [];

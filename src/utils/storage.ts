@@ -1,4 +1,3 @@
-
 type StorageKey = P2PStorageKeys | CustomResponseStorageKeys
 
 /** Custom UTxO Builder */

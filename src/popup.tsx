@@ -2,6 +2,7 @@ import DebugIcon from "@mui/icons-material/Analytics";
 import LogViewerIcon from "@mui/icons-material/DocumentScanner";
 import AddressBookIcon from "@mui/icons-material/MenuBook";
 import P2PConnectIcon from "@mui/icons-material/Power";
+import UtXOBuilderIcon from "@mui/icons-material/ListAlt";
 import OverrideIcon from "@mui/icons-material/Settings";
 import {
   Avatar, Box, Button, Container, CssBaseline, InputLabel, MenuItem, Stack, Switch,
@@ -23,6 +24,8 @@ import { AddressBook, AddressBookItem, EView, EWalletType } from "./types";
 import { isValidAddress } from "./utils/addresses";
 import { Log } from "./utils/log_util";
 import { P2PStorageKeys, getFromStorage, makeStorageChangeListener } from "./utils/storage";
+import { useCustomResponse } from "./hooks/useCustomResponse";
+import UTxOBuilder from "./components/utxo-builder";
 
 const SORBET_MAIN_THEME: ThemeOptions = {
   palette: {
@@ -245,6 +248,9 @@ const Popup = () => {
             setImpersonatedAddress={updateImpersonatedWallet}
           />
         )}
+        {EView.UTXO_BUILDER === view && (
+          <UTxOBuilder />
+        )}
         {EView.LOG_VIEWER === view && (
           <LogViewerComponent />
         )}
@@ -302,6 +308,8 @@ const MenuBar = ({ view, setView }: { view: EView, setView: (v: EView) => void }
     const listener = makeStorageChangeListener(P2PStorageKeys.P2P_IS_CONNECTED, (isConnected: boolean) => setIsConnected(isConnected), true, "")
     return () => { listener() }
   }, [])
+
+  const { isCustomResponseEnabled } = useCustomResponse()
   return (
     <Stack direction="row" spacing={4} sx={{ marginTop: 2 }}>
       <ToggleButtonGroup
@@ -322,6 +330,9 @@ const MenuBar = ({ view, setView }: { view: EView, setView: (v: EView) => void }
         </ToggleButton>
         <ToggleButton value={EView.P2P_CONNECT} aria-label="center aligned">
           {isConnected ? <P2PConnectIcon color="success" /> : <P2PConnectIcon />}
+        </ToggleButton>
+        <ToggleButton value={EView.UTXO_BUILDER} aria-label="center aligned">
+          {isCustomResponseEnabled ? <UtXOBuilderIcon color="primary" /> : <UtXOBuilderIcon />}
         </ToggleButton>
         <ToggleButton value={EView.LOG_VIEWER} aria-label="left aligned">
           <LogViewerIcon />
