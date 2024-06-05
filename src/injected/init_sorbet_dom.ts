@@ -12,10 +12,10 @@ const SORBET_DOM_WALLET_NAME = "sorbet"
  * @param extensionBaseURL 
  */
 export async function initSorbetDOMObject(extensionBaseURL: string) {
-    let { wallet, impersonatedAddress, walletType } = await sendMessageToBackground({
+    let { wrapWallet, impersonatedAddress, walletType } = await sendMessageToBackground({
         action: "query_walletConfig",
     });
-    initSorbetDOMObjectWithProperties(extensionBaseURL, wallet, impersonatedAddress, walletType)
+    initSorbetDOMObjectWithProperties(extensionBaseURL, wrapWallet, impersonatedAddress, walletType)
 }
 /**
  * Use passed args to initialize the cardano.sorbet DOM object
@@ -26,9 +26,10 @@ export async function initSorbetDOMObject(extensionBaseURL: string) {
  * @param p2pIsConnected 
  */
 export async function initSorbetDOMObjectWithProperties(
-    extensionBaseURL: string, wallet: string, impersonatedAddress: string, walletType: EWalletType, 
+    extensionBaseURL: string, wallet: string, impersonatedAddress: string, walletType: EWalletType,
     p2pIsConnected = false, isInjected = true
 ) {
+    Log.D(`initSorbetDOMObjectWithProperties`, { extensionBaseURL, wallet, impersonatedAddress, walletType, p2pIsConnected, isInjected });
     if (walletType !== EWalletType.IMPERSONATE && wallet) {
         initializeSorbetWallet_NOT_Impersonate(walletType, wallet, extensionBaseURL, p2pIsConnected);
     } else if (walletType === EWalletType.IMPERSONATE) {

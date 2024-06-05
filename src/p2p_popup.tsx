@@ -18,12 +18,12 @@ const P2P_Popup = () => {
         }
         const extensionBaseURL = chrome.runtime.getURL("");
         const storage = await getFromStorage([
-            "wallet",
+            "wrapWallet",
             "impersonatedAddress",
             "walletType",
         ]);
-        const { walletType, impersonatedAddress, wallet } = storage
-        initSorbetDOMObjectWithProperties(extensionBaseURL, wallet, impersonatedAddress, walletType, true)
+        const { walletType, impersonatedAddress, wrapWallet } = storage
+        initSorbetDOMObjectWithProperties(extensionBaseURL, wrapWallet, impersonatedAddress, walletType, true)
     }
     useEffect(() => {
         loadP2PWalletDom()

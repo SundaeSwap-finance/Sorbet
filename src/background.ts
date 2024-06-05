@@ -112,15 +112,15 @@ async function handleRequest(request: any) {
       return { shouldScanForAddresses };
     }
     case "query_walletConfig": {
-      const { walletType, impersonatedAddress, wallet } = await getFromStorage([
-        "wallet",
+      const { walletType, impersonatedAddress, wrapWallet } = await getFromStorage([
+        "wrapWallet",
         "impersonatedAddress",
         "walletType",
       ]);
       const network = impersonatedAddress?.startsWith("addr_test") ? 0 : 1;
       return {
         walletType: walletType ?? EWalletType.IMPERSONATE,
-        wallet,
+        wrapWallet,
         impersonatedAddress,
         network,
       };
