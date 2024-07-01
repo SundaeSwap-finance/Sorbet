@@ -7,11 +7,15 @@ The Cardano Developer's Wallet
 ## Roadmap
 - [x] Impersonate an address, viewing the dApp (roughly) as that user would
 - [x] Wrap a wallet, passing through functionality to an existing wallet
-- [ ] Save common addresses in an address book
-- [ ] Add the ability for sites to build Sorbet integrations
-- [ ] CIP-45 capability
-- [ ] Inspect traffic between a dApp and a wallet
-- [ ] Return arbitrary data or errors to dApp requests, to test corner cases
+- [x] Save common addresses in an address book
+- [ ] Add the ability for sites to build Sorbet integrations via hooks:
+  - [x] `cardano.sorbet.setAddress(addr: string)`
+  - [x] `cardano.sorbet.addToAddressBook(addr: string)`
+- [x] CIP-45 capability
+- [ ] Inspect traffic between a dApp and a wallet on the logging panel:
+  - [x] CIP-30 methods' input and output
+- [ ] Return arbitrary data or errors to dApp requests, to test corner cases:
+  - [x] UTxO builder for creating custom responses from `.getUtxos()`, `.getBalance()`, and `.getCollateral()`
 
 ## Installing
 
