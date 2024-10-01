@@ -1,18 +1,19 @@
-import * as cbor from 'cbor-web';
+import * as cbor from "cbor-web";
 import { Quantity } from "../background";
 import { MultiAssetAmount } from "./utxo";
 
 export function computeBalanceFromQuantities(addressInfos: { amount: Quantity[] }[]) {
-  const allData = addressInfos.map(ai => separateAdaFromAssets(ai.amount))
+  const allData = addressInfos.map((ai) => separateAdaFromAssets(ai.amount));
   // We fold all the asset data up into a single array.
   const balance = foldAssets(allData);
-  return balance
+  return balance;
 }
 
-export function foldAssets(allData: { ada: Quantity[]; assets: Quantity[]; }[]) {
+export function foldAssets(allData: { ada: Quantity[]; assets: Quantity[] }[]) {
   return allData.reduce((acc, { ada, assets }) => {
-    acc.coin = (Number(acc.coin ?? 0) + ada
-      .reduce((total, { quantity }) => {
+    acc.coin = (
+      Number(acc.coin ?? 0) +
+      ada.reduce((total, { quantity }) => {
         total += Number(quantity);
         return total;
       }, 0)
@@ -58,27 +59,31 @@ export function separateAdaFromAssets(amount?: Quantity[]): {
   return { ada, assets };
 }
 
-
 export function assetsToEncodedBalance(balance: MultiAssetAmount<any>) {
   // rencode the multiassets to a map of buffers, parsing hex keys on the object to byte buffers
-  let multiAsset = new Map<Buffer, Map<Buffer, number>>();
-  let internedKeys: { [key: string]: Buffer } = {}
+  let multiAsset = new Map<Buffer, Map<Buffer, bigint>>();
+  let internedKeys: { [key: string]: Buffer } = {};
   const multi_assets = balance.multi_assets ?? {};
   const allPolicyIds = Object.keys(multi_assets);
   for (const policyId of allPolicyIds) {
     const allAssetNames = Object.keys(multi_assets[policyId]);
     for (const assetName of allAssetNames) {
       const asset = multi_assets[policyId][assetName];
-      const policyIdBuffer = internedKeys[policyId] ?? Buffer.from(policyId, 'hex');
-      const assetNameBuffer = internedKeys[assetName] ?? Buffer.from(assetName, 'hex');
+      const policyIdBuffer = internedKeys[policyId] ?? Buffer.from(policyId, "hex");
+      const assetNameBuffer = internedKeys[assetName] ?? Buffer.from(assetName, "hex");
       internedKeys[policyId] = policyIdBuffer;
       internedKeys[assetName] = assetNameBuffer;
       if (!multiAsset.has(policyIdBuffer)) {
-        multiAsset.set(policyIdBuffer, new Map<Buffer, number>());
+        multiAsset.set(policyIdBuffer, new Map<Buffer, bigint>());
       }
-      multiAsset.get(policyIdBuffer)?.set(assetNameBuffer, asset);
+      multiAsset.get(policyIdBuffer)?.set(assetNameBuffer, BigInt(asset));
     }
   }
-  const encoded = (cbor.encodeOne([Number(balance.coin), multiAsset], { highWaterMark: 65535 })).toString('hex');
+  const encoded = cbor
+    .encodeOne([Number(balance.coin), multiAsset], {
+      collapseBigIntegers: true,
+      highWaterMark: 65535,
+    })
+    .toString("hex");
   return encoded;
 }
