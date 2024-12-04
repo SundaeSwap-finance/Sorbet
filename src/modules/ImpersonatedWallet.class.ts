@@ -1,7 +1,15 @@
-import type { TConnectedApi, TDataSignature, TExperimentalApi, TPaginate } from "../../typings/cip30";
+import type {
+  TConnectedApi,
+  TDataSignature,
+  TExperimentalApi,
+  TPaginate,
+} from "../../typings/cip30";
 import { bech32ToHex } from "../utils/addresses";
 import { assetsToEncodedBalance } from "../utils/balance";
-import { sendMessageToBackground, sendMessageToBackground as sendMessageToBackground_FromInjected } from "../utils/sendMessageToBackground";
+import {
+  sendMessageToBackground,
+  sendMessageToBackground as sendMessageToBackground_FromInjected,
+} from "../utils/sendMessageToBackground";
 import { utxosToHexArray } from "../utils/utxo";
 import { walletInvoked } from "./walletLog";
 // import { Address } from "@dcspark/cardano-multiplatform-lib-browser";
@@ -13,15 +21,14 @@ import { walletInvoked } from "./walletLog";
  */
 async function sendMessageToBackground_FromPopup<R = any>(message: { action: string } & any) {
   return await new Promise<R>((resolve, reject) => {
-    chrome.runtime.sendMessage(message,
-      response => {
-        if (response) {
-          resolve(response);
-        } else {
-          reject();
-        }
-      });
-  })
+    chrome.runtime.sendMessage(message, (response) => {
+      if (response) {
+        resolve(response);
+      } else {
+        reject();
+      }
+    });
+  });
 }
 
 export class ImpersonatedWallet implements TConnectedApi {
@@ -32,11 +39,13 @@ export class ImpersonatedWallet implements TConnectedApi {
   */
   public experimental?: TExperimentalApi | undefined;
 
-  private sendMessageToBackground: (message: { action: string } & any) => any
+  private sendMessageToBackground: (message: { action: string } & any) => any;
 
   constructor(isInjected: boolean) {
     /** switch between to allow communication with background thread from popups */
-    this.sendMessageToBackground = isInjected ? sendMessageToBackground_FromInjected : sendMessageToBackground_FromPopup
+    this.sendMessageToBackground = isInjected
+      ? sendMessageToBackground_FromInjected
+      : sendMessageToBackground_FromPopup;
 
     // TODO: This is hard-coded to get dApps to work, since we don't need to actually sign valid transactions,
     // but it'd still be nice to emulate choosing a collateral UTXO from the wallet.
@@ -45,9 +54,9 @@ export class ImpersonatedWallet implements TConnectedApi {
         const { collateral } = await sendMessageToBackground({
           action: "request_getCollateral",
         });
-        return collateral
+        return collateral;
       },
-    }
+    };
     // Bind each of the methods to this, because shenanigans
     this.getUsedAddresses = this.getUsedAddresses.bind(this);
     this.getUnusedAddresses = this.getUnusedAddresses.bind(this);
@@ -70,15 +79,17 @@ export class ImpersonatedWallet implements TConnectedApi {
     const { balance } = await this.sendMessageToBackground({
       action: "request_getBalance",
     });
+
     walletInvoked("getBalance", [], balance);
-    return assetsToEncodedBalance(balance)
+    const encoded = assetsToEncodedBalance(balance);
+    return encoded;
   }
 
   async getChangeAddress(): Promise<string> {
     const { impersonatedAddress } = await this.sendMessageToBackground({
       action: "query_walletConfig",
     });
-    walletInvoked("getChangeAddress", [], impersonatedAddress)
+    walletInvoked("getChangeAddress", [], impersonatedAddress);
     const impersonatedAddress_toHex = bech32ToHex(impersonatedAddress);
     return impersonatedAddress_toHex;
   }
@@ -89,14 +100,14 @@ export class ImpersonatedWallet implements TConnectedApi {
     const { collateral } = await sendMessageToBackground({
       action: "request_getCollateral",
     });
-    return collateral
+    return collateral;
   }
 
   async getNetworkId(): Promise<number> {
     const { network } = await this.sendMessageToBackground({
       action: "query_walletConfig",
     });
-    walletInvoked("getNetworkId", [], network)
+    walletInvoked("getNetworkId", [], network);
     return network;
   }
 
@@ -104,7 +115,7 @@ export class ImpersonatedWallet implements TConnectedApi {
   // but it'd still be nice to emulate choosing a collateral UTXO from the wallet.
   async getRewardAddresses(): Promise<string[]> {
     const rewardAddresses = ["e1c0ff5904e5d29c1d85ef193acbe0c6eb7cddbcf3a0d2a593e96931c4"];
-    walletInvoked("getRewardAddresses", [], rewardAddresses)
+    walletInvoked("getRewardAddresses", [], rewardAddresses);
     return rewardAddresses;
   }
 
@@ -112,7 +123,7 @@ export class ImpersonatedWallet implements TConnectedApi {
     const { impersonatedAddress } = await this.sendMessageToBackground({
       action: "query_walletConfig",
     });
-    walletInvoked("getUnusedAddresses", [paginate], impersonatedAddress)
+    walletInvoked("getUnusedAddresses", [paginate], impersonatedAddress);
     const unusedAddresses = [bech32ToHex(impersonatedAddress)];
     return unusedAddresses;
   }
@@ -123,7 +134,7 @@ export class ImpersonatedWallet implements TConnectedApi {
       paginate,
     });
 
-    walletInvoked("getUsedAddresses", [paginate], addresses)
+    walletInvoked("getUsedAddresses", [paginate], addresses);
     const addresses_toHex = addresses?.map((addr: string) => bech32ToHex(addr));
     return addresses_toHex;
   }
@@ -135,7 +146,8 @@ export class ImpersonatedWallet implements TConnectedApi {
     const { utxos } = await this.sendMessageToBackground({
       action: "request_getUTXOs",
     });
-    walletInvoked("getUtxos", [amount, paginate], utxos)
+
+    walletInvoked("getUtxos", [amount, paginate], utxos);
 
     const encodedUTXOs = utxosToHexArray(utxos);
     return encodedUTXOs;
@@ -147,23 +159,24 @@ export class ImpersonatedWallet implements TConnectedApi {
       key: "",
       signature: "",
     };
-    walletInvoked("signData", [addr, payload], signedData)
-    return signedData
+    walletInvoked("signData", [addr, payload], signedData);
+    return signedData;
   }
 
   // TODO: The response is hard-coded, but it'd be nice to emulate something nicer here.
   async signTx(tx: string, partialSign?: boolean | undefined): Promise<string> {
-    console.log("Sorbet: asked to sign ", tx)
-    const signedTx = "a1008182582078b0eff557a5468f74ca5cc03a55ad3f9310568a037f9b295360b9e9316c953d5840ca48874aba63b221ab7ee77763ea7de003d06cade0d606b83f1563d9342bb4dbc252a174565c641f220baa90a436277a9d11ef7170f04303b089bb4013612802";
-    walletInvoked("signTx", [tx, partialSign], signedTx)
+    console.log("Sorbet: asked to sign ", tx);
+    const signedTx =
+      "a1008182582078b0eff557a5468f74ca5cc03a55ad3f9310568a037f9b295360b9e9316c953d5840ca48874aba63b221ab7ee77763ea7de003d06cade0d606b83f1563d9342bb4dbc252a174565c641f220baa90a436277a9d11ef7170f04303b089bb4013612802";
+    walletInvoked("signTx", [tx, partialSign], signedTx);
     return signedTx;
   }
 
   // TODO: The response is hard-coded, but it'd be nice to emulate something nicer here.
   async submitTx(tx: string): Promise<string> {
-    console.log("Sorbet: asked to submit ", tx)
-    const submittedTx = "beefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef"
-    walletInvoked("submitTx", [tx], submittedTx)
+    console.log("Sorbet: asked to submit ", tx);
+    const submittedTx = "beefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef";
+    walletInvoked("submitTx", [tx], submittedTx);
     return submittedTx;
   }
 }
