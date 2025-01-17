@@ -2,7 +2,7 @@ import * as cbor from "cbor-web";
 import { Quantity } from "../background";
 import { MultiAssetAmount } from "./utxo";
 
-export function computeBalanceFromQuantities(addressInfos: { amount: Quantity[] }[]) {
+export function computeBalanceFromAmounts(addressInfos: { amount: Quantity[] }[]) {
   const allData = addressInfos.map((ai) => separateAdaFromAssets(ai.amount));
   // We fold all the asset data up into a single array.
   const balance = foldAssets(allData);

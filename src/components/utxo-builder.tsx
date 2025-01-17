@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Quantity } from "../background";
 import { useCustomResponse } from "../hooks/useCustomResponse";
 import { isValidAddress } from "../utils/addresses";
-import { assetsToEncodedBalance, computeBalanceFromQuantities } from "../utils/balance";
+import { assetsToEncodedBalance, computeBalanceFromAmounts } from "../utils/balance";
 import { MultiAssetAmount, MultiAssetOut, UTxO, encodeUtxos, utxosToHexArray } from "../utils/utxo";
 import { SorbetIconButton } from "./sorbet-icon-button";
 
@@ -46,11 +46,11 @@ const UTxOViewer = ({ utxos, disabled }: { utxos: UTxO[], disabled: boolean }) =
       <div>
         <b>Balance:</b>
         <pre>
-          {utxos && JSON.stringify(computeBalanceFromQuantities(utxos as { amount: Quantity[] }[]), null, 2)}
+          {utxos && JSON.stringify(computeBalanceFromAmounts(utxos as { amount: Quantity[] }[]), null, 2)}
         </pre>
         <div>
           <b>Balance Hex Encoded: </b>
-          {utxos && JSON.stringify(assetsToEncodedBalance(computeBalanceFromQuantities(utxos as { amount: Quantity[] }[]) as MultiAssetAmount<unknown>), null, 2)}
+          {utxos && JSON.stringify(assetsToEncodedBalance(computeBalanceFromAmounts(utxos as { amount: Quantity[] }[]) as MultiAssetAmount<unknown>), null, 2)}
         </div>
       </div>
       <div>
