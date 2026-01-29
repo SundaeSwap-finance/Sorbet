@@ -14,13 +14,12 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import ContactsIcon from "@mui/icons-material/ContactsOutlined";
-import TestnetIcon from "@mui/icons-material/BugReport";
 import EditIcon from "@mui/icons-material/Edit";
 import CopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteIcon from "@mui/icons-material/DeleteOutline";
-import MainnetIcon from "@mui/icons-material/CheckCircle";
 import ExclamIcon from "@mui/icons-material/ErrorOutline";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import StopIcon from "@mui/icons-material/Stop";
 import SaveIcon from "@mui/icons-material/Check";
 import { isValidAddress } from "../utils/addresses";
 import { AddressBook, AddressBookItem } from "../types";
@@ -233,42 +232,40 @@ const AddressBookItemComponent = (props: AddressBookItemProps): JSX.Element => {
       sx={{
         p: 2,
         border: "1px solid",
-        borderColor: isCurrentAddress ? "primary.300" : "grey.200",
+        borderColor: isCurrentAddress ? "primary.200" : "grey.200",
         borderRadius: 3,
         backgroundColor: isCurrentAddress ? "primary.50" : "white",
         transition: "all 0.15s ease",
         "&:hover": {
-          borderColor: isCurrentAddress ? "primary.400" : "grey.300",
+          borderColor: isCurrentAddress ? "primary.main" : "grey.300",
         },
       }}
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
         <Avatar
           sx={{
-            width: 40,
-            height: 40,
+            width: 36,
+            height: 36,
+            fontSize: 14,
+            fontWeight: 600,
             bgcolor: !addressIsValid
               ? "error.100"
-              : isTestnet
-              ? "warning.100"
               : isCurrentAddress
               ? "primary.100"
-              : "success.100",
+              : "grey.200",
             color: !addressIsValid
               ? "error.main"
-              : isTestnet
-              ? "warning.main"
               : isCurrentAddress
               ? "primary.main"
-              : "success.main",
+              : "grey.600",
           }}
         >
           {!addressIsValid ? (
-            <ExclamIcon />
-          ) : isTestnet ? (
-            <TestnetIcon />
+            <ExclamIcon sx={{ fontSize: 18 }} />
+          ) : name ? (
+            name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()
           ) : (
-            <MainnetIcon />
+            address.slice(5, 7).toUpperCase()
           )}
         </Avatar>
 
@@ -352,7 +349,20 @@ const AddressBookButtons = ({
 
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-      {!isCurrentAddress && (
+      {isCurrentAddress ? (
+        <Tooltip title="Disconnect" placement="top">
+          <IconButton
+            size="small"
+            onClick={() => {
+              setImpersonatedAddress("");
+              openAlert("Address disconnected");
+            }}
+            sx={{ ...iconBtnSx, bgcolor: "error.100", color: "error.main", "&:hover": { bgcolor: "error.200" } }}
+          >
+            <StopIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
+      ) : (
         <Tooltip title="Use this address" placement="top">
           <IconButton
             size="small"

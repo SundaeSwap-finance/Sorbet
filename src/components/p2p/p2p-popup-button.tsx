@@ -1,8 +1,9 @@
 import DevicesIcon from "@mui/icons-material/DevicesOther";
 import LaunchIcon from "@mui/icons-material/LaunchRounded";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
-import { Avatar, Box, Button, Paper, Typography } from "@mui/material";
+import LinkIcon from "@mui/icons-material/Link";
+import LinkOffIcon from "@mui/icons-material/LinkOff";
+import { Box, Button, Chip, Paper, Typography } from "@mui/material";
 import React, { useEffect, useState } from "react";
 import { P2PStorageKeys, makeStorageChangeListener } from "../../utils/storage";
 
@@ -46,109 +47,138 @@ export const P2P_PopupButton = () => {
   };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
-      {/* Hero Card */}
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {/* Status Bar */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          p: 1.5,
+          borderRadius: 2,
+          bgcolor: isConnected ? "success.50" : "grey.100",
+          border: "1px solid",
+          borderColor: isConnected ? "success.200" : "grey.200",
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          {isConnected ? (
+            <LinkIcon sx={{ color: "success.main", fontSize: 20 }} />
+          ) : (
+            <LinkOffIcon sx={{ color: "grey.400", fontSize: 20 }} />
+          )}
+          <Box>
+            <Typography variant="body2" fontWeight={600} color={isConnected ? "success.dark" : "text.secondary"}>
+              {isConnected ? "P2P Connected" : "Not Connected"}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {isConnected ? "Remote dApp active" : "No active connections"}
+            </Typography>
+          </Box>
+        </Box>
+        <Chip
+          size="small"
+          icon={isConnected ? <CheckCircleIcon sx={{ fontSize: "14px !important" }} /> : undefined}
+          label={isConnected ? "Live" : "Off"}
+          sx={{
+            bgcolor: isConnected ? "success.main" : "grey.300",
+            color: "white",
+            fontWeight: 600,
+            "& .MuiChip-icon": { color: "white" },
+          }}
+        />
+      </Box>
+
+      {/* Action Card */}
       <Paper
         elevation={0}
         sx={{
-          p: 3,
-          borderRadius: 3,
-          background: "linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)",
-          color: "white",
-          textAlign: "center",
+          p: 2,
+          borderRadius: 2,
+          border: "1px solid",
+          borderColor: "grey.200",
+          bgcolor: "white",
         }}
       >
-        <Avatar
-          sx={{
-            width: 56,
-            height: 56,
-            bgcolor: "rgba(255,255,255,0.2)",
-            mx: "auto",
-            mb: 2,
-          }}
-        >
-          <DevicesIcon sx={{ fontSize: 28 }} />
-        </Avatar>
-        <Typography variant="h6" fontWeight={700} sx={{ mb: 0.5 }}>
-          Remote Connection
-        </Typography>
-        <Typography variant="body2" sx={{ opacity: 0.9, mb: 2.5 }}>
-          Connect to dApps on other devices using CIP-45 peer-to-peer protocol
-        </Typography>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 2 }}>
+          <Box
+            sx={{
+              width: 36,
+              height: 36,
+              borderRadius: 2,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)",
+              color: "white",
+            }}
+          >
+            <DevicesIcon sx={{ fontSize: 20 }} />
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="body2" fontWeight={600}>
+              Connection Manager
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Connect to dApps on other devices
+            </Typography>
+          </Box>
+        </Box>
         <Button
-          variant="contained"
           fullWidth
+          variant="contained"
           onClick={openP2PWindow}
-          endIcon={<LaunchIcon />}
-          sx={{
-            bgcolor: "background.paper",
-            color: "text.primary",
-            fontWeight: 600,
-            "&:hover": { bgcolor: "background.paper" },
-          }}
+          endIcon={<LaunchIcon sx={{ fontSize: 18 }} />}
         >
-          {hasPopup ? "Open Manager" : "Launch Connection Manager"}
+          {hasPopup ? "Open Manager" : "Launch Manager"}
         </Button>
       </Paper>
 
-      {/* Status */}
-      <Paper
-        variant="outlined"
-        sx={{
-          p: 2,
-          borderRadius: 2,
-          display: "flex",
-          alignItems: "center",
-          gap: 2,
-          borderColor: isConnected ? "success.200" : "grey.200",
-          bgcolor: isConnected ? "success.50" : "transparent",
-        }}
-      >
-        {isConnected ? (
-          <CheckCircleIcon sx={{ color: "success.main", fontSize: 24 }} />
-        ) : (
-          <RadioButtonUncheckedIcon sx={{ color: "grey.400", fontSize: 24 }} />
-        )}
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="body2" fontWeight={600}>
-            {isConnected ? "Connected" : "Not Connected"}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {isConnected ? "dApp connection active" : "No active P2P connections"}
-          </Typography>
-        </Box>
-      </Paper>
-
-      {/* Instructions */}
+      {/* How it works - Compact */}
       {!isConnected && (
-        <Box sx={{ px: 1 }}>
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            bgcolor: "grey.50",
+            border: "1px solid",
+            borderColor: "grey.100",
+          }}
+        >
           <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1.5, display: "block" }}>
-            How it works
+            Quick Start
           </Typography>
           {[
-            "Open the Connection Manager above",
-            "Get a Peer ID from your dApp",
-            "Paste it to establish connection",
-          ].map((step, i) => (
-            <Box key={i} sx={{ display: "flex", gap: 1.5, mb: 1.5 }}>
-              <Avatar
+            { num: "1", text: "Open the Connection Manager" },
+            { num: "2", text: "Get a Peer ID from your dApp" },
+            { num: "3", text: "Paste to connect" },
+          ].map((step) => (
+            <Box key={step.num} sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 0.75 }}>
+              <Typography
+                variant="caption"
                 sx={{
-                  width: 22,
-                  height: 22,
-                  bgcolor: "primary.100",
-                  color: "primary.main",
-                  fontSize: 12,
+                  width: 18,
+                  height: 18,
+                  borderRadius: "50%",
+                  bgcolor: "grey.200",
+                  color: "grey.600",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   fontWeight: 700,
+                  fontSize: 11,
+                  flexShrink: 0,
                 }}
               >
-                {i + 1}
-              </Avatar>
-              <Typography variant="body2" color="text.secondary" sx={{ pt: 0.25 }}>
-                {step}
+                {step.num}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {step.text}
               </Typography>
             </Box>
           ))}
-        </Box>
+        </Paper>
       )}
     </Box>
   );

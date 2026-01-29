@@ -49,6 +49,7 @@ const palette = {
     contrastText: "#FFFFFF",
     50: "#FEF2F2",
     100: "#FEE2E2",
+    200: "#FECACA",
   },
   grey: {
     50: "#FAFAFA",
