@@ -1,26 +1,31 @@
 import KeyIcon from "@mui/icons-material/VpnKey";
 import VisibilityIcon from "@mui/icons-material/VisibilityOutlined";
-import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import PersonIcon from "@mui/icons-material/PersonOutline";
 import LayersIcon from "@mui/icons-material/Layers";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import ClearIcon from "@mui/icons-material/Clear";
+import BookmarkIcon from "@mui/icons-material/Bookmark";
+import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
+import ContentPasteIcon from "@mui/icons-material/ContentPaste";
+import PowerIcon from "@mui/icons-material/Power";
+import PowerOffIcon from "@mui/icons-material/PowerOff";
 import {
   Alert,
   Avatar,
   Box,
   Button,
-  ButtonBase,
   Chip,
   Container,
   CssBaseline,
   IconButton,
+  InputAdornment,
   Paper,
   Snackbar,
   Switch,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -223,120 +228,25 @@ const Popup = () => {
             >
               {/* Wallet Tab */}
               {view === EView.WALLET && (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
-                  {/* Status Hero */}
-                  <WalletStatusCard
-                    walletType={walletType}
-                    isOverridden={isOverridden}
-                    overrideWallet={overrideWallet}
-                    impersonatedAddress={impersonatedAddress}
-                  />
-
-                  {/* Mode Selector */}
-                  <Box>
-                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1, display: "block" }}>
-                      Mode
-                    </Typography>
-                    <Box sx={{ display: "flex", gap: 1 }}>
-                      <ModeCard
-                        icon={<PersonIcon />}
-                        label="Impersonate"
-                        description="Use any address"
-                        selected={walletType === EWalletType.IMPERSONATE}
-                        onClick={() => updateWalletType(EWalletType.IMPERSONATE)}
-                      />
-                      <ModeCard
-                        icon={<LayersIcon />}
-                        label="Wrap"
-                        description="Extend a wallet"
-                        selected={walletType === EWalletType.WRAP}
-                        onClick={() => updateWalletType(EWalletType.WRAP)}
-                      />
-                    </Box>
-                  </Box>
-
-                  {/* Impersonate Mode */}
-                  {walletType === EWalletType.IMPERSONATE && (
-                    <Box>
-                      <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1, display: "block" }}>
-                        Address
-                      </Typography>
-                      <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
-                        <Box sx={{ flex: 1 }}>
-                          <AddressAutoComplete
-                            addressBook={addressBook}
-                            impersonatedAddress={impersonatedAddress}
-                            impersonatedAddressIsValid={impersonatedAddressIsValid}
-                            updateImpersonatedWallet={updateImpersonatedWallet}
-                            finalizeImpersonatedWallet={finalizeImpersonatedWallet}
-                            addToAddressBook={addToAddressBook}
-                            removeFromAddressBook={removeFromAddressBook}
-                            addOrUpdateAddressBookItem={addOrUpdateAddressBookItem}
-                          />
-                        </Box>
-                        {impersonatedAddress && (
-                          <Tooltip title="Clear address">
-                            <IconButton
-                              size="small"
-                              onClick={clearImpersonateWallet}
-                              sx={{
-                                mt: 0.5,
-                                bgcolor: "grey.100",
-                                color: "text.secondary",
-                                "&:hover": { bgcolor: "grey.200" },
-                              }}
-                            >
-                              <ClearIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                      </Box>
-                    </Box>
-                  )}
-
-                  {/* Wrap Mode */}
-                  {walletType === EWalletType.WRAP && (
-                    <Box>
-                      <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1, display: "block" }}>
-                        Base Wallet
-                      </Typography>
-                      <WalletSelect wallet={wrapWallet} onChange={updateWrapWallet} />
-                    </Box>
-                  )}
-
-                  {/* Override Toggle */}
-                  <Paper
-                    variant="outlined"
-                    sx={{
-                      p: 2,
-                      borderRadius: 3,
-                      borderColor: isOverridden ? "primary.200" : "grey.200",
-                      bgcolor: isOverridden ? "primary.50" : "transparent",
-                    }}
-                  >
-                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                        <Avatar sx={{ width: 36, height: 36, bgcolor: isOverridden ? "primary.100" : "grey.100" }}>
-                          <SwapHorizIcon sx={{ fontSize: 20, color: isOverridden ? "primary.main" : "grey.500" }} />
-                        </Avatar>
-                        <Box>
-                          <Typography variant="body2" fontWeight={600}>
-                            Override Wallet
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            Replace connected wallet
-                          </Typography>
-                        </Box>
-                      </Box>
-                      <Switch checked={isOverridden} onChange={(e) => updateIsOverridden(e.target.checked)} />
-                    </Box>
-                    {isOverridden && (
-                      <Box sx={{ mt: 2 }}>
-                        <WalletSelect label="" wallet={overrideWallet} onChange={updateOverrideWallet} />
-                      </Box>
-                    )}
-                  </Paper>
-                </Box>
+                <WalletTab
+                  walletType={walletType}
+                  updateWalletType={updateWalletType}
+                  impersonatedAddress={impersonatedAddress}
+                  impersonatedAddressIsValid={impersonatedAddressIsValid}
+                  updateImpersonatedWallet={updateImpersonatedWallet}
+                  finalizeImpersonatedWallet={finalizeImpersonatedWallet}
+                  clearImpersonateWallet={clearImpersonateWallet}
+                  addressBook={addressBook}
+                  addToAddressBook={addToAddressBook}
+                  removeFromAddressBook={removeFromAddressBook}
+                  addOrUpdateAddressBookItem={addOrUpdateAddressBookItem}
+                  wrapWallet={wrapWallet}
+                  updateWrapWallet={updateWrapWallet}
+                  isOverridden={isOverridden}
+                  updateIsOverridden={updateIsOverridden}
+                  overrideWallet={overrideWallet}
+                  updateOverrideWallet={updateOverrideWallet}
+                />
               )}
 
               {view === EView.CONTACTS && (
@@ -362,126 +272,296 @@ const Popup = () => {
   );
 };
 
-// Mode Card Component
-interface ModeCardProps {
-  icon: React.ReactNode;
-  label: string;
-  description: string;
-  selected: boolean;
-  onClick: () => void;
-}
-
-const ModeCard: React.FC<ModeCardProps> = ({ icon, label, description, selected, onClick }) => (
-  <ButtonBase
-    onClick={onClick}
-    sx={{
-      flex: 1,
-      p: 2,
-      borderRadius: 3,
-      border: "2px solid",
-      borderColor: selected ? "primary.main" : "grey.200",
-      bgcolor: selected ? "primary.50" : "white",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: 0.5,
-      transition: "all 0.2s",
-      "&:hover": {
-        borderColor: selected ? "primary.main" : "grey.300",
-        bgcolor: selected ? "primary.50" : "grey.50",
-      },
-    }}
-  >
-    <Avatar
-      sx={{
-        width: 40,
-        height: 40,
-        bgcolor: selected ? "primary.main" : "grey.100",
-        color: selected ? "white" : "grey.600",
-        mb: 0.5,
-      }}
-    >
-      {icon}
-    </Avatar>
-    <Typography variant="body2" fontWeight={600} color={selected ? "primary.main" : "text.primary"}>
-      {label}
-    </Typography>
-    <Typography variant="caption" color="text.secondary">
-      {description}
-    </Typography>
-  </ButtonBase>
-);
-
-// Wallet Status Card Component
-interface WalletStatusCardProps {
+// Wallet Tab Component - Redesigned UX
+interface WalletTabProps {
   walletType: EWalletType;
-  isOverridden: boolean;
-  overrideWallet: string;
+  updateWalletType: (type: EWalletType) => void;
   impersonatedAddress: string;
+  impersonatedAddressIsValid: boolean;
+  updateImpersonatedWallet: (address: string) => void;
+  finalizeImpersonatedWallet: (address: string) => void;
+  clearImpersonateWallet: () => void;
+  addressBook: AddressBook;
+  addToAddressBook: (address: string) => void;
+  removeFromAddressBook: (address: string) => void;
+  addOrUpdateAddressBookItem: (item: AddressBookItem) => void;
+  wrapWallet: string;
+  updateWrapWallet: (wallet: string) => void;
+  isOverridden: boolean;
+  updateIsOverridden: (value: boolean) => void;
+  overrideWallet: string;
+  updateOverrideWallet: (wallet: string) => void;
 }
 
-const WalletStatusCard: React.FC<WalletStatusCardProps> = ({
+const WalletTab: React.FC<WalletTabProps> = ({
   walletType,
-  isOverridden,
-  overrideWallet,
+  updateWalletType,
   impersonatedAddress,
+  impersonatedAddressIsValid,
+  updateImpersonatedWallet,
+  finalizeImpersonatedWallet,
+  clearImpersonateWallet,
+  addressBook,
+  addToAddressBook,
+  removeFromAddressBook,
+  wrapWallet,
+  updateWrapWallet,
+  isOverridden,
+  updateIsOverridden,
+  overrideWallet,
+  updateOverrideWallet,
 }) => {
   const isActive = impersonatedAddress || (isOverridden && overrideWallet !== "none");
+  const isInAddressBook = addressBook.some(a => a.address === impersonatedAddress);
+  const contactName = addressBook.find(a => a.address === impersonatedAddress)?.name;
+
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        updateImpersonatedWallet(text.trim());
+        finalizeImpersonatedWallet(text.trim());
+      }
+    } catch (err) {
+      console.error("Failed to paste:", err);
+    }
+  };
 
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        p: 2.5,
-        borderRadius: 3,
-        background: isActive
-          ? "linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)"
-          : "linear-gradient(135deg, #F4F4F5 0%, #E4E4E7 100%)",
-        color: isActive ? "white" : "text.primary",
-      }}
-    >
-      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-        <Avatar
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {/* Status Bar */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          p: 1.5,
+          borderRadius: 2,
+          bgcolor: isActive ? "primary.50" : "grey.100",
+          border: "1px solid",
+          borderColor: isActive ? "primary.200" : "grey.200",
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          {isActive ? (
+            <PowerIcon sx={{ color: "primary.main", fontSize: 20 }} />
+          ) : (
+            <PowerOffIcon sx={{ color: "grey.400", fontSize: 20 }} />
+          )}
+          <Box>
+            <Typography variant="body2" fontWeight={600} color={isActive ? "primary.main" : "text.secondary"}>
+              {isActive ? "Sorbet Active" : "Sorbet Inactive"}
+            </Typography>
+            {impersonatedAddress && (
+              <Typography variant="caption" sx={{ fontFamily: "monospace", color: "text.secondary" }}>
+                {contactName || `${impersonatedAddress.slice(0, 12)}...${impersonatedAddress.slice(-6)}`}
+              </Typography>
+            )}
+          </Box>
+        </Box>
+        <Chip
+          size="small"
+          icon={isActive ? <CheckCircleIcon sx={{ fontSize: "14px !important" }} /> : undefined}
+          label={isActive ? "On" : "Off"}
           sx={{
-            width: 48,
-            height: 48,
-            bgcolor: isActive ? "rgba(255,255,255,0.2)" : "white",
-            color: isActive ? "white" : "grey.500",
+            bgcolor: isActive ? "primary.main" : "grey.300",
+            color: "white",
+            fontWeight: 600,
+            "& .MuiChip-icon": { color: "white" },
+          }}
+        />
+      </Box>
+
+      {/* Mode Toggle */}
+      <Box>
+        <ToggleButtonGroup
+          value={walletType}
+          exclusive
+          onChange={(_, value) => value && updateWalletType(value)}
+          fullWidth
+          size="small"
+          sx={{
+            bgcolor: "grey.100",
+            p: 0.5,
+            borderRadius: 2,
+            "& .MuiToggleButton-root": {
+              border: "none",
+              borderRadius: "6px !important",
+              py: 1,
+              textTransform: "none",
+              fontWeight: 500,
+              color: "text.secondary",
+              "&.Mui-selected": {
+                bgcolor: "white",
+                color: "primary.main",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                "&:hover": { bgcolor: "white" },
+              },
+              "&:hover": { bgcolor: "transparent" },
+            },
           }}
         >
-          <AccountBalanceWalletIcon />
-        </Avatar>
-        <Box sx={{ flex: 1 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            {isActive ? (
-              <CheckCircleIcon sx={{ fontSize: 16 }} />
-            ) : (
-              <RadioButtonUncheckedIcon sx={{ fontSize: 16, opacity: 0.5 }} />
-            )}
-            <Typography variant="body1" fontWeight={700}>
-              {isActive ? "Active" : "Inactive"}
-            </Typography>
-          </Box>
-          {impersonatedAddress ? (
-            <Typography
-              variant="caption"
-              sx={{
-                fontFamily: "monospace",
-                opacity: 0.85,
-                display: "block",
-                mt: 0.25,
-              }}
-            >
-              {impersonatedAddress.slice(0, 16)}...{impersonatedAddress.slice(-6)}
-            </Typography>
-          ) : (
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>
-              No wallet configured
-            </Typography>
-          )}
-        </Box>
+          <ToggleButton value={EWalletType.IMPERSONATE}>
+            <PersonIcon sx={{ fontSize: 18, mr: 0.75 }} />
+            Impersonate
+          </ToggleButton>
+          <ToggleButton value={EWalletType.WRAP}>
+            <LayersIcon sx={{ fontSize: 18, mr: 0.75 }} />
+            Wrap Wallet
+          </ToggleButton>
+        </ToggleButtonGroup>
       </Box>
-    </Paper>
+
+      {/* Address Input - Impersonate Mode */}
+      {walletType === EWalletType.IMPERSONATE && (
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            border: "1px solid",
+            borderColor: impersonatedAddress ? (impersonatedAddressIsValid ? "primary.200" : "error.200") : "grey.200",
+            bgcolor: impersonatedAddress ? (impersonatedAddressIsValid ? "primary.50" : "error.50") : "white",
+          }}
+        >
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Enter or paste a Cardano address..."
+            value={impersonatedAddress}
+            onChange={(e) => updateImpersonatedWallet(e.target.value)}
+            onBlur={(e) => finalizeImpersonatedWallet(e.target.value)}
+            error={!!impersonatedAddress && !impersonatedAddressIsValid}
+            helperText={impersonatedAddress && !impersonatedAddressIsValid ? "Invalid address format" : ""}
+            InputProps={{
+              sx: { fontFamily: "monospace", fontSize: 13, bgcolor: "white" },
+              endAdornment: (
+                <InputAdornment position="end">
+                  {!impersonatedAddress ? (
+                    <Tooltip title="Paste from clipboard">
+                      <IconButton size="small" onClick={handlePaste} edge="end">
+                        <ContentPasteIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </Tooltip>
+                  ) : (
+                    <Box sx={{ display: "flex", gap: 0.25 }}>
+                      <Tooltip title={isInAddressBook ? "Saved to contacts" : "Save to contacts"}>
+                        <IconButton
+                          size="small"
+                          disabled={!impersonatedAddressIsValid}
+                          onClick={() => {
+                            if (isInAddressBook) {
+                              removeFromAddressBook(impersonatedAddress);
+                            } else {
+                              addToAddressBook(impersonatedAddress);
+                            }
+                          }}
+                          sx={{ color: isInAddressBook ? "primary.main" : "grey.400" }}
+                        >
+                          {isInAddressBook ? <BookmarkIcon sx={{ fontSize: 18 }} /> : <BookmarkBorderIcon sx={{ fontSize: 18 }} />}
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Clear">
+                        <IconButton size="small" onClick={clearImpersonateWallet} sx={{ color: "grey.400" }}>
+                          <ClearIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  )}
+                </InputAdornment>
+              ),
+            }}
+          />
+
+          {/* Quick Contacts */}
+          {!impersonatedAddress && addressBook.length > 0 && (
+            <Box sx={{ mt: 1.5 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.75, display: "block" }}>
+                Recent contacts
+              </Typography>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                {addressBook.slice(0, 4).map((contact) => (
+                  <Chip
+                    key={contact.address}
+                    label={contact.name || `${contact.address.slice(0, 8)}...`}
+                    size="small"
+                    onClick={() => {
+                      updateImpersonatedWallet(contact.address);
+                      finalizeImpersonatedWallet(contact.address);
+                    }}
+                    sx={{
+                      bgcolor: "white",
+                      border: "1px solid",
+                      borderColor: "grey.200",
+                      cursor: "pointer",
+                      "&:hover": { borderColor: "primary.main", bgcolor: "primary.50" },
+                    }}
+                  />
+                ))}
+              </Box>
+            </Box>
+          )}
+
+          {/* Contact Label */}
+          {contactName && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mt: 1 }}>
+              <BookmarkIcon sx={{ fontSize: 14, color: "primary.main" }} />
+              <Typography variant="caption" color="primary.main" fontWeight={500}>
+                {contactName}
+              </Typography>
+            </Box>
+          )}
+        </Paper>
+      )}
+
+      {/* Wallet Select - Wrap Mode */}
+      {walletType === EWalletType.WRAP && (
+        <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: "1px solid", borderColor: "grey.200" }}>
+          <Typography variant="caption" fontWeight={500} color="text.secondary" sx={{ mb: 1, display: "block" }}>
+            Select wallet to extend
+          </Typography>
+          <WalletSelect wallet={wrapWallet} onChange={updateWrapWallet} />
+        </Paper>
+      )}
+
+      {/* Override Section */}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          borderRadius: 2,
+          border: "1px solid",
+          borderColor: isOverridden ? "primary.200" : "grey.200",
+          bgcolor: isOverridden ? "primary.50" : "white",
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Avatar sx={{ width: 32, height: 32, bgcolor: isOverridden ? "primary.100" : "grey.100" }}>
+              <SwapHorizIcon sx={{ fontSize: 18, color: isOverridden ? "primary.main" : "grey.500" }} />
+            </Avatar>
+            <Box>
+              <Typography variant="body2" fontWeight={600}>
+                Override Wallet
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Replace dApp's connected wallet
+              </Typography>
+            </Box>
+          </Box>
+          <Switch
+            checked={isOverridden}
+            onChange={(e) => updateIsOverridden(e.target.checked)}
+            size="small"
+          />
+        </Box>
+        {isOverridden && (
+          <Box sx={{ mt: 1.5, pt: 1.5, borderTop: "1px solid", borderColor: "grey.200" }}>
+            <WalletSelect label="" wallet={overrideWallet} onChange={updateOverrideWallet} />
+          </Box>
+        )}
+      </Paper>
+    </Box>
   );
 };
 

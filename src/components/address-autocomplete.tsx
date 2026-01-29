@@ -1,43 +1,37 @@
 import BookmarkIcon from "@mui/icons-material/Bookmark";
-import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
-import { Autocomplete, Box, IconButton, Popper, TextField, Tooltip, Typography, createFilterOptions } from "@mui/material";
-import React, { ReactElement } from "react";
-import { AddressBook } from "../types";
+import { Autocomplete, Box, Popper, TextField, Typography, createFilterOptions } from "@mui/material";
+import React from "react";
+import { AddressBook, AddressBookItem } from "../types";
+
 interface AddressAutoCompleteProps {
   addressBook: AddressBook;
   impersonatedAddress: string;
   impersonatedAddressIsValid: boolean;
-  addToAddressBook: (a: string) => void;
-  removeFromAddressBook: (a: string) => void;
   updateImpersonatedWallet: (a: string) => void;
   finalizeImpersonatedWallet: (a: string) => void;
+  addOrUpdateAddressBookItem: (item: AddressBookItem) => void;
 }
+
 export const AddressAutoComplete = ({
   addressBook,
   impersonatedAddress,
   impersonatedAddressIsValid,
-  addToAddressBook,
-  removeFromAddressBook,
   updateImpersonatedWallet,
   finalizeImpersonatedWallet,
 }: AddressAutoCompleteProps) => {
   const impersonatedAddressBookItem = addressBook.find(
     (abi) => abi.address === impersonatedAddress
   );
-  const impersonatedAddressIsInAddressBook = impersonatedAddressBookItem !== undefined;
 
-  const addIconToEndAdornment = (endAdornment: ReactElement, icon: ReactElement) => {
-    const children = React.Children.toArray(endAdornment.props.children);
-    children.push(icon);
-    return React.cloneElement(endAdornment, {}, children);
-  };
   const showAddressError = !impersonatedAddressIsValid && impersonatedAddress !== "";
+  
   return (
     <>
       <Autocomplete
         fullWidth
         disablePortal
         freeSolo
+        disableClearable
         id="impersonated-address"
         value={impersonatedAddress}
         options={addressBook}
@@ -93,42 +87,6 @@ export const AddressAutoComplete = ({
             fullWidth
             label="Impersonated Address"
             variant="outlined"
-            InputProps={{
-              ...params.InputProps,
-              sx: {
-                "& input": {
-                  textOverflow: "ellipsis",
-                },
-              },
-              endAdornment: addIconToEndAdornment(
-                params.InputProps.endAdornment as ReactElement,
-                <Tooltip
-                  title={
-                    impersonatedAddressIsInAddressBook
-                      ? "Remove from contacts"
-                      : "Save to contacts"
-                  }
-                >
-                  <IconButton
-                    key={1}
-                    size="small"
-                    disabled={!impersonatedAddressIsValid}
-                    onClick={() => {
-                      if (impersonatedAddressIsValid) {
-                        impersonatedAddressIsInAddressBook
-                          ? removeFromAddressBook(impersonatedAddress)
-                          : addToAddressBook(impersonatedAddress);
-                      }
-                    }}
-                    sx={{
-                      color: impersonatedAddressIsInAddressBook ? "primary.main" : "text.secondary",
-                    }}
-                  >
-                    {impersonatedAddressIsInAddressBook ? <BookmarkIcon /> : <BookmarkBorderIcon />}
-                  </IconButton>
-                </Tooltip>
-              ),
-            }}
             type="text"
             onChange={(e) => {
               updateImpersonatedWallet(e.target.value);
