@@ -37,12 +37,11 @@ export const addressToCredentials = (address: string) => {
   };
 };
 
-
 export const isValidAddress = (s: string) => {
   try {
-    bech32.decode(s, s.length)
-    return true
+    bech32.decode(s, s.length);
+    return true;
   } catch (e) {
-    return false
+    return false;
   }
 };
