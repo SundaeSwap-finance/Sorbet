@@ -38,6 +38,11 @@ export function utxosToHexArray(utxos: UTxOWithAssets[]) {
   const encodedUTXOs = [];
   try {
     for (const utxo of utxos) {
+      // Skip UTxOs with invalid/empty addresses or tx_hash
+      if (!utxo.address || !utxo.tx_hash || !isValidUtxoAddress(utxo.address)) {
+        continue;
+      }
+
       let amount: bigint | (bigint | Map<Buffer, Map<Buffer, bigint>>)[] = BigInt(utxo.amount.coin);
       if (utxo.amount.multi_assets && Object.keys(utxo.amount.multi_assets).length > 0) {
         // rencode the multiassets to a map of buffers, parsing hex keys on the object to byte buffers
@@ -77,6 +82,16 @@ export function utxosToHexArray(utxos: UTxOWithAssets[]) {
     return encodedUTXOs;
   } catch (e) {
     return encodedUTXOs;
+  }
+}
+
+/** Check if address is valid for encoding */
+function isValidUtxoAddress(address: string): boolean {
+  try {
+    bech32ToHex(address);
+    return true;
+  } catch {
+    return false;
   }
 }
 

@@ -1,7 +1,7 @@
 {
-  "name": "chrome-extension-typescript-starter",
+  "name": "sundae-sorbet",
   "version": "1.0.0",
-  "description": "chrome-extension-typescript-starter",
+  "description": "Sundae Sorbet - The Cardano Developer's Wallet",
   "main": "index.js",
   "scripts": {
     "watch": "webpack --config webpack/webpack.dev.js --watch",
