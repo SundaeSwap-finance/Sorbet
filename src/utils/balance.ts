@@ -80,7 +80,7 @@ export function assetsToEncodedBalance(balance: MultiAssetAmount<any>) {
     }
   }
   const encoded = cbor
-    .encodeOne([BigInt(balance.coin), multiAsset], {
+    .encodeOne([BigInt(balance.coin ?? 0), multiAsset], {
       collapseBigIntegers: true,
       highWaterMark: 65535,
     })

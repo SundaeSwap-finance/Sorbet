@@ -43,9 +43,8 @@ export function utxosToHexArray(utxos: UTxOWithAssets[]) {
         continue;
       }
 
-      let amount: bigint | (bigint | Map<Buffer, Map<Buffer, bigint>>)[] = BigInt(utxo.amount.coin);
+      let amount: bigint | [bigint, Map<Buffer, Map<Buffer, bigint>>] = BigInt(utxo.amount.coin);
       if (utxo.amount.multi_assets && Object.keys(utxo.amount.multi_assets).length > 0) {
-        // rencode the multiassets to a map of buffers, parsing hex keys on the object to byte buffers
         let multiAsset = new Map<Buffer, Map<Buffer, bigint>>();
         let internedKeys: { [key: string]: Buffer } = {};
         for (const policyId of Object.keys(utxo.amount.multi_assets)) {

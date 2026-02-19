@@ -17,32 +17,92 @@ export interface Quantity {
   quantity: string;
 }
 
-const blockfrostCache: any = {
+// --- Cache with TTL ---
+const CACHE_TTL_MS = 30_000; // 30 seconds
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+function getCached<T>(entry: CacheEntry<T> | undefined): T | null {
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) return null;
+  return entry.data;
+}
+
+function setCache<T>(data: T): CacheEntry<T> {
+  return { data, timestamp: Date.now() };
+}
+
+const blockfrostCache: {
+  usedAddresses: Record<string, CacheEntry<string[]>>;
+  rawUtxos: Record<string, CacheEntry<any[]>>;
+  balance: Record<string, CacheEntry<any>>;
+  utxos: Record<string, CacheEntry<any[]>>;
+} = {
   usedAddresses: {},
+  rawUtxos: {},
   balance: {},
   utxos: {},
 };
 
+function clearCacheForAddress(address: string) {
+  delete blockfrostCache.usedAddresses[address];
+  delete blockfrostCache.rawUtxos[address];
+  delete blockfrostCache.balance[address];
+  delete blockfrostCache.utxos[address];
+}
+
+// --- In-flight deduplication ---
+const inFlightRequests: Record<string, Promise<any>> = {};
+
+async function getRawUtxos(mainnet: boolean, stakeKey: string, cacheKey: string): Promise<any[]> {
+  const cached = getCached(blockfrostCache.rawUtxos[cacheKey]);
+  if (cached) return cached;
+
+  const flightKey = `rawUtxos:${cacheKey}`;
+  if (flightKey in inFlightRequests) return inFlightRequests[flightKey];
+
+  const promise = getAllUtxos(mainnet, stakeKey).then((utxos) => {
+    blockfrostCache.rawUtxos[cacheKey] = setCache(utxos);
+    delete inFlightRequests[flightKey];
+    return utxos;
+  }).catch((err) => {
+    delete inFlightRequests[flightKey];
+    throw err;
+  });
+
+  inFlightRequests[flightKey] = promise;
+  return promise;
+}
+
+// --- Message listener ---
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   (async () => {
-    const response = await handleRequest(request);
-    if (response) {
-      response.id = request.id;
-      sendResponse(response);
+    try {
+      const response = await handleRequest(request);
+      if (response) {
+        response.id = request.id;
+        sendResponse(response);
+      }
+    } catch (err) {
+      console.error("Sorbet: background handleRequest error:", err);
+      sendResponse({ id: request.id, error: String(err) });
     }
   })();
   return true;
 });
 
-let rateLimiter = Promise.resolve();
+// --- Blockfrost API with exponential backoff ---
+const MAX_RETRIES = 5;
 
 async function callBlockfrost<R = any>(
   mainnet: Boolean,
   path: string,
-  params: Record<string, string> = {}
+  params: Record<string, string> = {},
+  retryCount: number = 0
 ): Promise<R> {
-  await rateLimiter;
-
   const { blockfrostApiKey, blockfrostMainnetApiKey, blockfrostPreviewApiKey } =
     await getFromStorage({
       blockfrostApiKey: undefined,
@@ -53,9 +113,9 @@ async function callBlockfrost<R = any>(
   const blockfrostUrl = mainnet
     ? "https://cardano-mainnet.blockfrost.io"
     : "https://cardano-preview.blockfrost.io";
-  const usedAddressesUrl = new URL(path, blockfrostUrl);
+  const requestUrl = new URL(path, blockfrostUrl);
   for (const [key, value] of Object.entries(params)) {
-    usedAddressesUrl.searchParams.append(key, value);
+    requestUrl.searchParams.append(key, value);
   }
 
   const headers: Record<string, string> = {};
@@ -63,23 +123,27 @@ async function callBlockfrost<R = any>(
     ? blockfrostApiKey ?? blockfrostMainnetApiKey
     : blockfrostPreviewApiKey;
 
-  const fetchParams = {
-    method: "GET",
-    headers,
-  };
+  const res = await fetch(requestUrl, { method: "GET", headers });
 
-  const res = await fetch(usedAddressesUrl, fetchParams);
-
-  if (res.status === 409) {
-    rateLimiter = new Promise((resolve) => {
-      setTimeout(resolve, 1000 / 10);
-    });
-    return callBlockfrost(mainnet, path, params);
-  } else {
-    return res.json();
+  if (res.status === 429 || res.status === 409) {
+    if (retryCount >= MAX_RETRIES) {
+      throw new Error(`Blockfrost rate limit exceeded after ${MAX_RETRIES} retries for ${path}`);
+    }
+    const delay = Math.min(200 * Math.pow(2, retryCount), 5000);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return callBlockfrost(mainnet, path, params, retryCount + 1);
   }
+
+  if (!res.ok) {
+    const body = await res.text();
+    console.error(`Sorbet: Blockfrost ${res.status} for ${path}:`, body);
+    throw new Error(`Blockfrost API error ${res.status}: ${body}`);
+  }
+
+  return res.json();
 }
 
+// --- Request handler ---
 async function handleRequest(request: any) {
   Log.App.Message("handleRequest", request);
   switch (request.action) {
@@ -102,6 +166,13 @@ async function handleRequest(request: any) {
     }
     case "setAddress": {
       const { address } = request;
+      // Clear stale cache when address changes
+      const { impersonatedAddress: oldAddress } = await getFromStorage({
+        impersonatedAddress: "",
+      });
+      if (oldAddress && oldAddress !== address) {
+        clearCacheForAddress(oldAddress);
+      }
       chrome.storage.sync.set({ impersonatedAddress: address }, function () {
         console.log("Sorbet: wallet address updated:", address);
       });
@@ -135,8 +206,10 @@ async function handleRequest(request: any) {
       if (!impersonatedAddress) {
         return { error: "No impersonated address set" };
       }
-      if (blockfrostCache.usedAddresses[impersonatedAddress]) {
-        return { addresses: blockfrostCache.usedAddresses[impersonatedAddress] };
+
+      const cached = getCached(blockfrostCache.usedAddresses[impersonatedAddress]);
+      if (cached) {
+        return { addresses: cached };
       }
 
       const stakeKey = stakeKeyFromAddress(impersonatedAddress);
@@ -151,41 +224,15 @@ async function handleRequest(request: any) {
       const addresses = addrs?.map(({ address }: { address: string }) => {
         return address;
       });
-      blockfrostCache.usedAddresses[impersonatedAddress] = addresses;
+      blockfrostCache.usedAddresses[impersonatedAddress] = setCache(addresses);
       return {
         id: request.id,
         addresses,
       };
     }
     case "request_getCollateral": {
-      const storage = await getFromStorage({
-        [CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED]: false,
-        [CustomResponseStorageKeys.MOCK_UTXOS]: [],
-      });
-      const isCustomResponseEnabled = storage[CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED];
-      const mockUtxos = storage[CustomResponseStorageKeys.MOCK_UTXOS];
-
-      let collateral = [
-        "82825820d060df960efa59b66ac8baedc42c61580128b1c75241ca74ed927708442d5df705825839014476a6f50d917710191e90ecc8e292fefc53dbedb2104837306d4e77c0ff5904e5d29c1d85ef193acbe0c6eb7cddbcf3a0d2a593e96931c41a004c4b40",
-        "82825820cd407d5ddcfd7c7de172c16a2eb6cadcbac768a5e46bee139dc35fa756dfebf2048258390159c7da059a3259670ec5975ea426ac46be2850e8399fc558d0245d70c0ff5904e5d29c1d85ef193acbe0c6eb7cddbcf3a0d2a593e96931c41a004c4b40",
-        "82825820cb7f7e9a68962bcded8b694b85e7911870c95aa9d3e2b02611201f71a5d06bd50482583901ef393a53e4368740c68bfda46de1300fa7229ac90cca0ad5c1ddb17bc0ff5904e5d29c1d85ef193acbe0c6eb7cddbcf3a0d2a593e96931c41a004c4b40",
-      ];
-      if (isCustomResponseEnabled) {
-        let min: number | undefined, collateralAmnt: MultiAssetAmount | undefined;
-        (mockUtxos as MultiAssetAmount[]).forEach((amnt) => {
-          const next = Number(amnt.coin) - 5000000;
-          if (next < 0) return;
-          if (!min || next < min) {
-            min = next;
-            collateralAmnt = amnt;
-          }
-        });
-        if (collateralAmnt) {
-          collateral = [assetsToEncodedBalance(collateralAmnt)];
-        }
-      }
       return {
-        collateral,
+        collateral: null,
       };
     }
     case "request_getBalance": {
@@ -206,16 +253,20 @@ async function handleRequest(request: any) {
       if (isCustomResponseEnabled) {
         utxos = mockUtxos;
         Log.D("returning custom response from getBalance()", { mockUtxos });
-      } else if (blockfrostCache.balance[impersonatedAddress]) {
-        return { balance: blockfrostCache.balance[impersonatedAddress] };
       } else {
+        const cachedBalance = getCached(blockfrostCache.balance[impersonatedAddress]);
+        if (cachedBalance) {
+          return { balance: cachedBalance };
+        }
+
         const mainnet = !impersonatedAddress?.startsWith("addr_test");
         const stakeKey = stakeKeyFromAddress(impersonatedAddress);
-        utxos = await getAllUtxos(mainnet, stakeKey);
+        utxos = await getRawUtxos(mainnet, stakeKey, impersonatedAddress);
       }
+
       const balance = computeBalanceFromAmounts(utxos);
       if (!isCustomResponseEnabled) {
-        blockfrostCache.balance[impersonatedAddress] = balance;
+        blockfrostCache.balance[impersonatedAddress] = setCache(balance);
       }
       return {
         balance,
@@ -240,19 +291,20 @@ async function handleRequest(request: any) {
           utxos: encodeUtxos(mockUtxos),
         };
       }
-      if (blockfrostCache.utxos[impersonatedAddress]) {
-        return { utxos: blockfrostCache.utxos[impersonatedAddress] };
+
+      const cachedUtxos = getCached(blockfrostCache.utxos[impersonatedAddress]);
+      if (cachedUtxos) {
+        return { utxos: cachedUtxos };
       }
 
       const mainnet = !impersonatedAddress?.startsWith("addr_test");
       const stakeKey = stakeKeyFromAddress(impersonatedAddress);
 
-      let allData: any[] = await getAllUtxos(mainnet, stakeKey);
-      // We flatten all utxos into a single array
-      const utxos = allData.flat();
+      const rawUtxos = await getRawUtxos(mainnet, stakeKey, impersonatedAddress);
+      const utxos = rawUtxos.flat();
       const utxosWithAssets = encodeUtxos(utxos);
 
-      blockfrostCache.utxos[impersonatedAddress] = utxosWithAssets;
+      blockfrostCache.utxos[impersonatedAddress] = setCache(utxosWithAssets);
       return {
         utxos: utxosWithAssets,
       };
@@ -270,40 +322,35 @@ export interface AddressInfo {
   script: boolean;
 }
 
-async function getAddressInfo(mainnet: boolean, stakeKey: string): Promise<AddressInfo[]> {
-  const allData: AddressInfo[] = [];
+async function getUtxosForAddress(mainnet: boolean, address: string): Promise<any[]> {
+  const utxos: any[] = [];
   let page = 1;
   while (true) {
-    // We get all the addresses based on the stake key.
-    const addresses = await callBlockfrost(
+    const pageData = await callBlockfrost(
       mainnet,
-      `/api/v0/accounts/${stakeKey}/addresses?page=${page}`
+      `/api/v0/addresses/${address}/utxos?page=${page}`,
     );
-    if (addresses.length === 0) {
+    if (!pageData || pageData.length === 0) {
       break;
     }
-    const pageData = await Promise.all(
-      Object.values<{ address: string }>(addresses).map(
-        async ({ address }: { address: string }) =>
-          await callBlockfrost<AddressInfo>(mainnet, `/api/v0/addresses/${address}`)
-      )
-    );
-    allData.push(...pageData);
+    utxos.push(...pageData);
     page += 1;
   }
-  return allData;
+  return utxos;
 }
+
 async function getAllUtxos(mainnet: boolean, stakeKey: string): Promise<any[]> {
-  let page = 1;
-  const allData: any[] = [];
-  while (true) {
-    // We get all the addresses based on the stake key.
-    const utxos = await callBlockfrost(mainnet, `/api/v0/accounts/${stakeKey}/utxos?page=${page}`);
-    if (!utxos || utxos.length == 0) {
-      break;
-    }
-    page += 1;
-    allData.push(...utxos);
+  const addresses = await callBlockfrost<{ address: string }[]>(
+    mainnet,
+    `/api/v0/accounts/${stakeKey}/addresses`,
+  );
+
+  if (!addresses?.length) {
+    return [];
   }
-  return allData;
+
+  const results = await Promise.all(
+    addresses.map(({ address }) => getUtxosForAddress(mainnet, address)),
+  );
+  return results.flat();
 }
