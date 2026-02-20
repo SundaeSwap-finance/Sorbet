@@ -17,6 +17,64 @@ export interface Quantity {
   quantity: string;
 }
 
+// --- In-memory config caches (populated on first use, invalidated via onChanged) ---
+let cachedBlockfrostKeys: {
+  blockfrostApiKey: string | undefined;
+  blockfrostMainnetApiKey: string;
+  blockfrostPreviewApiKey: string;
+} | null = null;
+
+let cachedWalletConfig: {
+  walletType: string;
+  impersonatedAddress: string;
+  wrapWallet: string;
+} | null = null;
+
+async function getBlockfrostKeys() {
+  if (cachedBlockfrostKeys) return cachedBlockfrostKeys;
+  const keys = await getFromStorage({
+    blockfrostApiKey: undefined,
+    blockfrostMainnetApiKey: "",
+    blockfrostPreviewApiKey: "",
+  });
+  cachedBlockfrostKeys = {
+    blockfrostApiKey: keys.blockfrostApiKey,
+    blockfrostMainnetApiKey: keys.blockfrostMainnetApiKey,
+    blockfrostPreviewApiKey: keys.blockfrostPreviewApiKey,
+  };
+  return cachedBlockfrostKeys;
+}
+
+async function getWalletConfig() {
+  if (cachedWalletConfig) return cachedWalletConfig;
+  const { walletType, impersonatedAddress, wrapWallet } = await getFromStorage([
+    "wrapWallet",
+    "impersonatedAddress",
+    "walletType",
+  ]);
+  cachedWalletConfig = {
+    walletType: walletType ?? EWalletType.IMPERSONATE,
+    impersonatedAddress: impersonatedAddress ?? "",
+    wrapWallet: wrapWallet ?? "",
+  };
+  return cachedWalletConfig;
+}
+
+// Invalidate in-memory caches when storage changes.
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "sync") return;
+  if (
+    "blockfrostApiKey" in changes ||
+    "blockfrostMainnetApiKey" in changes ||
+    "blockfrostPreviewApiKey" in changes
+  ) {
+    cachedBlockfrostKeys = null;
+  }
+  if ("walletType" in changes || "impersonatedAddress" in changes || "wrapWallet" in changes) {
+    cachedWalletConfig = null;
+  }
+});
+
 // --- Cache with TTL ---
 const CACHE_TTL_MS = 30_000; // 30 seconds
 
@@ -54,6 +112,35 @@ function clearCacheForAddress(address: string) {
   delete blockfrostCache.utxos[address];
 }
 
+// --- Session storage persistence (survives SW idle restarts) ---
+const SESSION_CACHE_KEY = "sorbet_blockfrost_cache";
+
+async function persistCacheToSession() {
+  try {
+    await chrome.storage.session.set({ [SESSION_CACHE_KEY]: blockfrostCache });
+  } catch {
+    // session storage may not be available in all contexts
+  }
+}
+
+async function restoreCacheFromSession() {
+  try {
+    const result = await chrome.storage.session.get(SESSION_CACHE_KEY);
+    const saved = result[SESSION_CACHE_KEY];
+    if (saved) {
+      Object.assign(blockfrostCache.usedAddresses, saved.usedAddresses);
+      Object.assign(blockfrostCache.rawUtxos, saved.rawUtxos);
+      Object.assign(blockfrostCache.balance, saved.balance);
+      Object.assign(blockfrostCache.utxos, saved.utxos);
+    }
+  } catch {
+    // session storage may not be available
+  }
+}
+
+// Restore cache on SW startup.
+restoreCacheFromSession();
+
 // --- In-flight deduplication ---
 const inFlightRequests: Record<string, Promise<any>> = {};
 
@@ -64,14 +151,17 @@ async function getRawUtxos(mainnet: boolean, stakeKey: string, cacheKey: string)
   const flightKey = `rawUtxos:${cacheKey}`;
   if (flightKey in inFlightRequests) return inFlightRequests[flightKey];
 
-  const promise = getAllUtxos(mainnet, stakeKey).then((utxos) => {
-    blockfrostCache.rawUtxos[cacheKey] = setCache(utxos);
-    delete inFlightRequests[flightKey];
-    return utxos;
-  }).catch((err) => {
-    delete inFlightRequests[flightKey];
-    throw err;
-  });
+  const promise = getAllUtxos(mainnet, stakeKey)
+    .then((utxos) => {
+      blockfrostCache.rawUtxos[cacheKey] = setCache(utxos);
+      delete inFlightRequests[flightKey];
+      persistCacheToSession();
+      return utxos;
+    })
+    .catch((err) => {
+      delete inFlightRequests[flightKey];
+      throw err;
+    });
 
   inFlightRequests[flightKey] = promise;
   return promise;
@@ -81,6 +171,11 @@ async function getRawUtxos(mainnet: boolean, stakeKey: string, cacheKey: string)
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   (async () => {
     try {
+      // Fast path: ping is used to pre-warm the service worker.
+      if (request.action === "ping") {
+        sendResponse({ ok: true });
+        return;
+      }
       const response = await handleRequest(request);
       if (response) {
         response.id = request.id;
@@ -103,12 +198,7 @@ async function callBlockfrost<R = any>(
   params: Record<string, string> = {},
   retryCount: number = 0
 ): Promise<R> {
-  const { blockfrostApiKey, blockfrostMainnetApiKey, blockfrostPreviewApiKey } =
-    await getFromStorage({
-      blockfrostApiKey: undefined,
-      blockfrostMainnetApiKey: "",
-      blockfrostPreviewApiKey: "",
-    });
+  const keys = await getBlockfrostKeys();
 
   const blockfrostUrl = mainnet
     ? "https://cardano-mainnet.blockfrost.io"
@@ -120,8 +210,8 @@ async function callBlockfrost<R = any>(
 
   const headers: Record<string, string> = {};
   headers.project_id = mainnet
-    ? blockfrostApiKey ?? blockfrostMainnetApiKey
-    : blockfrostPreviewApiKey;
+    ? keys.blockfrostApiKey ?? keys.blockfrostMainnetApiKey
+    : keys.blockfrostPreviewApiKey;
 
   const res = await fetch(requestUrl, { method: "GET", headers });
 
@@ -156,7 +246,7 @@ async function handleRequest(request: any) {
       chrome.storage.sync.get(["addressBook"], function (result) {
         const addressBook =
           result.addressBook && Array.isArray(result.addressBook) ? result.addressBook : [];
-        if (addressBook.find((abe) => abe.address === address)) return;
+        if (addressBook.find((abe: any) => abe.address === address)) return;
         const newAddressBook = [...addressBook, { address }];
         chrome.storage.sync.set({ addressBook: newAddressBook }, function () {
           console.log("Sorbet: address added to address book:", address);
@@ -167,12 +257,12 @@ async function handleRequest(request: any) {
     case "setAddress": {
       const { address } = request;
       // Clear stale cache when address changes
-      const { impersonatedAddress: oldAddress } = await getFromStorage({
-        impersonatedAddress: "",
-      });
-      if (oldAddress && oldAddress !== address) {
-        clearCacheForAddress(oldAddress);
+      const config = await getWalletConfig();
+      if (config.impersonatedAddress && config.impersonatedAddress !== address) {
+        clearCacheForAddress(config.impersonatedAddress);
       }
+      // Invalidate the in-memory wallet config so the next read picks up the new address.
+      cachedWalletConfig = null;
       chrome.storage.sync.set({ impersonatedAddress: address }, function () {
         console.log("Sorbet: wallet address updated:", address);
       });
@@ -186,23 +276,18 @@ async function handleRequest(request: any) {
       return { shouldScanForAddresses };
     }
     case "query_walletConfig": {
-      const { walletType, impersonatedAddress, wrapWallet } = await getFromStorage([
-        "wrapWallet",
-        "impersonatedAddress",
-        "walletType",
-      ]);
-      const network = impersonatedAddress?.startsWith("addr_test") ? 0 : 1;
+      const config = await getWalletConfig();
+      const network = config.impersonatedAddress?.startsWith("addr_test") ? 0 : 1;
       return {
-        walletType: walletType ?? EWalletType.IMPERSONATE,
-        wrapWallet,
-        impersonatedAddress,
+        walletType: config.walletType,
+        wrapWallet: config.wrapWallet,
+        impersonatedAddress: config.impersonatedAddress,
         network,
       };
     }
     case "request_getUsedAddresses": {
-      const { impersonatedAddress } = await getFromStorage({
-        impersonatedAddress: "",
-      });
+      const config = await getWalletConfig();
+      const impersonatedAddress = config.impersonatedAddress;
       if (!impersonatedAddress) {
         return { error: "No impersonated address set" };
       }
@@ -225,6 +310,7 @@ async function handleRequest(request: any) {
         return address;
       });
       blockfrostCache.usedAddresses[impersonatedAddress] = setCache(addresses);
+      persistCacheToSession();
       return {
         id: request.id,
         addresses,
@@ -267,6 +353,7 @@ async function handleRequest(request: any) {
       const balance = computeBalanceFromAmounts(utxos);
       if (!isCustomResponseEnabled) {
         blockfrostCache.balance[impersonatedAddress] = setCache(balance);
+        persistCacheToSession();
       }
       return {
         balance,
@@ -305,6 +392,7 @@ async function handleRequest(request: any) {
       const utxosWithAssets = encodeUtxos(utxos);
 
       blockfrostCache.utxos[impersonatedAddress] = setCache(utxosWithAssets);
+      persistCacheToSession();
       return {
         utxos: utxosWithAssets,
       };
@@ -322,19 +410,40 @@ export interface AddressInfo {
   script: boolean;
 }
 
+// Blockfrost returns 100 items per page by default.
+const BLOCKFROST_PAGE_SIZE = 100;
+const PARALLEL_PAGES = 3;
+
 async function getUtxosForAddress(mainnet: boolean, address: string): Promise<any[]> {
   const utxos: any[] = [];
   let page = 1;
+
+  // Speculative parallel fetch: request PARALLEL_PAGES pages at once.
   while (true) {
-    const pageData = await callBlockfrost(
-      mainnet,
-      `/api/v0/addresses/${address}/utxos?page=${page}`,
+    const pageNumbers = Array.from({ length: PARALLEL_PAGES }, (_, i) => page + i);
+    const pageResults = await Promise.all(
+      pageNumbers.map((p) =>
+        callBlockfrost(mainnet, `/api/v0/addresses/${address}/utxos`, { page: p.toString() }).catch(
+          () => []
+        )
+      )
     );
-    if (!pageData || pageData.length === 0) {
-      break;
+
+    let lastNonEmpty = -1;
+    for (let i = 0; i < pageResults.length; i++) {
+      const data = pageResults[i];
+      if (data && data.length > 0) {
+        utxos.push(...data);
+        lastNonEmpty = i;
+      }
     }
-    utxos.push(...pageData);
-    page += 1;
+
+    // If no pages returned data, or the last non-empty page was not full, we're done.
+    if (lastNonEmpty === -1) break;
+    const lastPage = pageResults[lastNonEmpty];
+    if (lastPage.length < BLOCKFROST_PAGE_SIZE) break;
+
+    page += PARALLEL_PAGES;
   }
   return utxos;
 }
@@ -342,7 +451,7 @@ async function getUtxosForAddress(mainnet: boolean, address: string): Promise<an
 async function getAllUtxos(mainnet: boolean, stakeKey: string): Promise<any[]> {
   const addresses = await callBlockfrost<{ address: string }[]>(
     mainnet,
-    `/api/v0/accounts/${stakeKey}/addresses`,
+    `/api/v0/accounts/${stakeKey}/addresses`
   );
 
   if (!addresses?.length) {
@@ -350,7 +459,7 @@ async function getAllUtxos(mainnet: boolean, stakeKey: string): Promise<any[]> {
   }
 
   const results = await Promise.all(
-    addresses.map(({ address }) => getUtxosForAddress(mainnet, address)),
+    addresses.map(({ address }) => getUtxosForAddress(mainnet, address))
   );
   return results.flat();
 }

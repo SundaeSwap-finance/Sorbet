@@ -11,6 +11,7 @@ module.exports = {
     background: path.join(srcDir, "background.ts"),
     content_script: path.join(srcDir, "content_script.ts"),
     injectedScript: path.join(srcDir, "injectedScript.ts"),
+    sorbet_stub: path.join(srcDir, "sorbet_stub.ts"),
     devtools: path.join(srcDir, "devtools/index.ts"),
     log_devtool: path.join(srcDir, "devtools/log_devtool.tsx"),
   },

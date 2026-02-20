@@ -1,22 +1,11 @@
 import { ImpersonatedWallet } from "../modules/ImpersonatedWallet.class";
 import { EWalletType } from "../types";
 import { Log } from "../utils/log_util";
-import { sendMessageToBackground } from "../utils/sendMessageToBackground";
 import { addToAddressBook, setAddress } from "./messages";
 
 /** The base name for the property in the cardano DOM object, e.g. cardano.sorbet, cardano.sorbet_p2p */
 const SORBET_DOM_WALLET_NAME = "sorbet";
-/**
- * Retrieve user preferences from background and initialize the cardano.sorbet DOM object.
- * *NOTE*: ignores p2p connection
- * @param extensionBaseURL
- */
-export async function initSorbetDOMObject(extensionBaseURL: string) {
-  let { wrapWallet, impersonatedAddress, walletType } = await sendMessageToBackground({
-    action: "query_walletConfig",
-  });
-  initSorbetDOMObjectWithProperties(extensionBaseURL, wrapWallet, impersonatedAddress, walletType);
-}
+
 /**
  * Use passed args to initialize the cardano.sorbet DOM object
  * @param extensionBaseURL
@@ -128,4 +117,12 @@ const makeSorbetWallet = (
     ...baseProperties,
     ...enableFns,
   };
+
+  // Patch the stub's icon and forward enable/isEnabled to the real implementation.
+  // This ensures early enable() callers (who got the stub's promise) complete correctly.
+  if (domWalletName === SORBET_DOM_WALLET_NAME) {
+    if (typeof (window as any).__sorbet_patch_api === "function") {
+      (window as any).__sorbet_patch_api(enableFns.enable, enableFns.isEnabled);
+    }
+  }
 };

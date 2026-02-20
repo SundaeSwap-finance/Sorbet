@@ -1,9 +1,29 @@
-const injectScript = (scriptContent: string) => {
-  const script = document.createElement("script");
-  script.textContent = scriptContent;
-  (document.head || document.documentElement).appendChild(script);
-  script.remove();
-};
+// --- Pre-warm the service worker so it's ready for real API calls ---
+chrome.runtime.sendMessage({ action: "ping" });
+
+// --- Read wallet config directly from storage and post to MAIN world ---
+// This eliminates the background round-trip for initial config (saves 50-200ms).
+chrome.storage.sync.get(
+  ["wrapWallet", "impersonatedAddress", "walletType", "shouldScanForAddresses"],
+  (items) => {
+    const extensionBaseURL = chrome.runtime.getURL("");
+    window.postMessage(
+      {
+        type: "SORBET_CONFIG",
+        payload: {
+          wrapWallet: items.wrapWallet,
+          impersonatedAddress: items.impersonatedAddress,
+          walletType: items.walletType ?? "impersonate",
+          shouldScanForAddresses: items.shouldScanForAddresses,
+          extensionBaseURL,
+        },
+      },
+      window.origin
+    );
+  }
+);
+
+// --- Inject the full implementation script ---
 const injectScriptFile = (filename: string) => {
   const script = document.createElement("script");
   script.type = "text/javascript";
@@ -13,18 +33,13 @@ const injectScriptFile = (filename: string) => {
     console.log(e);
   });
   script.addEventListener("load", () => {
-    // Dispatch a custom event with the base URL as a detail
-    // this is mostly used so we can load images from the injected content, like the logo for Sorbet
-    const extensionBaseURL = chrome.runtime.getURL("");
-    const ebuEvent = new CustomEvent("__sorbet_extensionBaseURL", {
-      detail: { extensionBaseURL },
-    });
-    window.dispatchEvent(ebuEvent);
     script.remove();
   });
 };
 
-// Listen for messages from the injected script
+injectScriptFile("js/injectedScript.js");
+
+// --- Relay messages between MAIN world (injected script) and background ---
 window.addEventListener("message", (event) => {
   if (event.source !== window || event.data?.type !== "FROM_INJECTED_SCRIPT") {
     return;
@@ -34,5 +49,3 @@ window.addEventListener("message", (event) => {
     window.postMessage({ type: "FROM_CONTENT_SCRIPT", payload: response }, window.origin);
   });
 });
-
-injectScriptFile("js/injectedScript.js");
