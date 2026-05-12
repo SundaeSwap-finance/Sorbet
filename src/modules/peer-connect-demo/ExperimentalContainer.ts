@@ -22,13 +22,20 @@
  * other's endpoints or perform complex operations.
  */
 // import { ExperimentalRpcEndpoint } from '../types';
-import { ExperimentalRpcEndpoint } from '@fabianbormann/cardano-peer-connect/dist/src/types';
-import Meerkat from '@fabianbormann/meerkat';
+import { ExperimentalRpcEndpoint } from "@fabianbormann/cardano-peer-connect/dist/src/types";
+import Meerkat from "@fabianbormann/meerkat";
 
 // The Value type represents all possible types of values in a DynamicObject.
-export type Value = string | number | boolean | symbol | bigint | object | null
-                    | ((...args: any[]) => any)
-                    | ((...args: any[]) => Promise<any>);
+export type Value =
+  | string
+  | number
+  | boolean
+  | symbol
+  | bigint
+  | object
+  | null
+  | ((...args: any[]) => any)
+  | ((...args: any[]) => Promise<any>);
 
 /**
  * The ExperimentalContainer class allows adding properties and functions of
@@ -67,7 +74,16 @@ export class ExperimentalContainer<T extends Record<keyof T, Value>> {
 }
 
 // The ValueType type represents all possible value types in a TypeMapping.
-export type ValueType = "string" | "number" | "boolean" | "symbol" | "bigint" | "object" | "null" | "function" | "async_function";
+export type ValueType =
+  | "string"
+  | "number"
+  | "boolean"
+  | "symbol"
+  | "bigint"
+  | "object"
+  | "null"
+  | "function"
+  | "async_function";
 
 // The TypeInfo interface represents the type information for each property or function.
 export interface TypeInfo {
@@ -117,7 +133,6 @@ export async function executeOrGetProperty(
   name: string,
   ...args: any[]
 ): Promise<Value> {
-
   const typeMapping = createTypeMapping(container);
   const typeInfo = typeMapping.get(name);
 
@@ -132,7 +147,6 @@ export async function executeOrGetProperty(
     return (container as any)[name];
   }
 }
-
 
 /**
  * Serializes a type mapping object into a JSON string representation.
@@ -186,7 +200,6 @@ export const buildApiCalls = (
   serializedApiMapping: string,
   endpoint: ExperimentalRpcEndpoint
 ): Record<string, Value> => {
-
   const experimentalMapping = deserializeTypeMapping(serializedApiMapping);
 
   const apiObjectRecord: Record<string, Value> = {};
@@ -206,7 +219,6 @@ export const buildApiCalls = (
         });
       };
     } else {
-
       // dealing with non-function properties.
       apiObjectRecord[method] = typeInfo.value ?? null;
     }
@@ -214,7 +226,6 @@ export const buildApiCalls = (
 
   return apiObjectRecord;
 };
-
 
 /**
  * Registers an experimental endpoint with a Meerkat instance, enabling the remote endpoint to interact with
@@ -232,21 +243,19 @@ export const registerExperimentalEndpoint = (
   experimentalContainer: ExperimentalContainer<any>,
   identifier: string
 ) => {
+  meerkat.register(endpoint, async (address: string, args: Array<any>, callback: Function) => {
+    const functionName = args[0] as string;
 
-  meerkat.register(
-    endpoint,
-    async (address: string, args: Array<any>, callback: Function) => {
+    if (address === identifier) {
+      const result = await executeOrGetProperty(
+        experimentalContainer,
+        functionName,
+        ...args.splice(1)
+      );
 
-      const functionName = args[0] as string;
-
-      if (address === identifier) {
-
-        const result = await executeOrGetProperty(experimentalContainer, functionName, ...args.splice(1))
-
-        if (typeof result !== 'undefined') {
-          callback(result);
-        }
+      if (typeof result !== "undefined") {
+        callback(result);
       }
     }
-  )
-}
+  });
+};

@@ -7,7 +7,10 @@ export function sendMessageToBackground(payload: any): Promise<any> {
     const msgListener = (evt: any) => {
       if (evt.source !== window || evt.data?.type !== "FROM_CONTENT_SCRIPT") return;
       if (evt.data?.payload?.id === undefined) {
-        Log.W("Sorbet: Warning: Received a message from the content script that did not have an ID. This is probably a bug.", evt.data.payload)
+        Log.W(
+          "Sorbet: Warning: Received a message from the content script that did not have an ID. This is probably a bug.",
+          evt.data.payload
+        );
       }
       if (evt.data?.payload?.id !== id) return;
 

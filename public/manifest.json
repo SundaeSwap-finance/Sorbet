@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
 
-  "name": "SundaeSwap Sorbet",
+  "name": "Sundae Sorbet",
   "description": "The Cardano Developer's Wallet",
   "version": "1.0",
 
@@ -19,8 +19,15 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
+      "js": ["js/sorbet_stub.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
       "css": ["styles.css"],
-      "js": ["js/content_script.js"]
+      "js": ["js/content_script.js"],
+      "run_at": "document_start"
     }
   ],
 
@@ -28,7 +35,7 @@
 
   "web_accessible_resources": [
     {
-      "resources": ["js/injectedScript.js", "sorbet.png", "js/*.wasm"],
+      "resources": ["js/injectedScript.js", "js/*.js", "sorbet.png"],
       "matches": ["<all_urls>"]
     }
   ],

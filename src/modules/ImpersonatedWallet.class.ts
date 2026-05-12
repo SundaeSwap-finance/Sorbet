@@ -31,6 +31,19 @@ async function sendMessageToBackground_FromPopup<R = any>(message: { action: str
   });
 }
 
+// CIP-30 APIError codes. InternalError signals a recoverable wallet-side problem
+// (e.g. the user hasn't finished setting up the wallet) without crashing the dApp.
+const APIErrorCode = {
+  InvalidRequest: -1,
+  InternalError: -2,
+  Refused: -3,
+  AccountChange: -4,
+} as const;
+
+function throwAPIError(info: string, code: number = APIErrorCode.InternalError): never {
+  throw { code, info };
+}
+
 export class ImpersonatedWallet implements TConnectedApi {
   /*
   public stakeKey: string;
@@ -76,10 +89,14 @@ export class ImpersonatedWallet implements TConnectedApi {
   }
 
   async getBalance(): Promise<string> {
-    const { balance } = await this.sendMessageToBackground({
+    const response = await this.sendMessageToBackground({
       action: "request_getBalance",
     });
+    if (response?.error) {
+      throwAPIError(response.error);
+    }
 
+    const { balance } = response;
     walletInvoked("getBalance", [], balance);
     const encoded = assetsToEncodedBalance(balance);
     return encoded;
@@ -89,6 +106,9 @@ export class ImpersonatedWallet implements TConnectedApi {
     const { impersonatedAddress } = await this.sendMessageToBackground({
       action: "query_walletConfig",
     });
+    if (!impersonatedAddress) {
+      throwAPIError("No impersonated address set");
+    }
     walletInvoked("getChangeAddress", [], impersonatedAddress);
     const impersonatedAddress_toHex = bech32ToHex(impersonatedAddress);
     return impersonatedAddress_toHex;
@@ -123,17 +143,24 @@ export class ImpersonatedWallet implements TConnectedApi {
     const { impersonatedAddress } = await this.sendMessageToBackground({
       action: "query_walletConfig",
     });
+    if (!impersonatedAddress) {
+      throwAPIError("No impersonated address set");
+    }
     walletInvoked("getUnusedAddresses", [paginate], impersonatedAddress);
     const unusedAddresses = [bech32ToHex(impersonatedAddress)];
     return unusedAddresses;
   }
 
   async getUsedAddresses(paginate?: TPaginate | undefined): Promise<string[]> {
-    const { addresses } = await this.sendMessageToBackground({
+    const response = await this.sendMessageToBackground({
       action: "request_getUsedAddresses",
       paginate,
     });
+    if (response?.error) {
+      throwAPIError(response.error);
+    }
 
+    const { addresses } = response;
     walletInvoked("getUsedAddresses", [paginate], addresses);
     const addresses_toHex = addresses?.map((addr: string) => bech32ToHex(addr));
     return addresses_toHex;
@@ -143,10 +170,14 @@ export class ImpersonatedWallet implements TConnectedApi {
     amount?: string | undefined,
     paginate?: TPaginate | undefined
   ): Promise<string[] | null> {
-    const { utxos } = await this.sendMessageToBackground({
+    const response = await this.sendMessageToBackground({
       action: "request_getUTXOs",
     });
+    if (response?.error) {
+      throwAPIError(response.error);
+    }
 
+    const { utxos } = response;
     walletInvoked("getUtxos", [amount, paginate], utxos);
 
     const encodedUTXOs = utxosToHexArray(utxos);

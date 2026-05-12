@@ -1,7 +1,7 @@
 {
-  "name": "chrome-extension-typescript-starter",
+  "name": "sundae-sorbet",
   "version": "1.0.0",
-  "description": "chrome-extension-typescript-starter",
+  "description": "Sundae Sorbet - The Cardano Developer's Wallet",
   "main": "index.js",
   "scripts": {
     "watch": "webpack --config webpack/webpack.dev.js --watch",
@@ -17,8 +17,7 @@
     "url": "https://github.com/chibat/chrome-extension-typescript-starter.git"
   },
   "dependencies": {
-    "@dcspark/cardano-multiplatform-lib-browser": "^3.1.2",
-    "@fabianbormann/cardano-peer-connect": "^1.2.12",
+"@fabianbormann/cardano-peer-connect": "^1.2.12",
     "@mui/icons-material": "^5.11.16",
     "@mui/material": "^5.12.1",
     "bech32": "^2.0.0",
