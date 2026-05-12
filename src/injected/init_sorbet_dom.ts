@@ -119,10 +119,15 @@ const makeSorbetWallet = (
   };
 
   // Patch the stub's icon and forward enable/isEnabled to the real implementation.
-  // This ensures early enable() callers (who got the stub's promise) complete correctly.
+  // This ensures early enable() callers (who got the stub's promise) complete correctly,
+  // and dApps that captured an early reference to the stub see the real icon.
   if (domWalletName === SORBET_DOM_WALLET_NAME) {
     if (typeof (window as any).__sorbet_patch_api === "function") {
-      (window as any).__sorbet_patch_api(enableFns.enable, enableFns.isEnabled);
+      (window as any).__sorbet_patch_api(
+        enableFns.enable,
+        enableFns.isEnabled,
+        baseProperties.icon
+      );
     }
   }
 };

@@ -1,43 +1,48 @@
 // --- Pre-warm the service worker so it's ready for real API calls ---
 chrome.runtime.sendMessage({ action: "ping" });
 
-// --- Read wallet config directly from storage and post to MAIN world ---
-// This eliminates the background round-trip for initial config (saves 50-200ms).
-chrome.storage.sync.get(
-  ["wrapWallet", "impersonatedAddress", "walletType", "shouldScanForAddresses"],
-  (items) => {
-    const extensionBaseURL = chrome.runtime.getURL("");
-    window.postMessage(
-      {
-        type: "SORBET_CONFIG",
-        payload: {
-          wrapWallet: items.wrapWallet,
-          impersonatedAddress: items.impersonatedAddress,
-          walletType: items.walletType ?? "impersonate",
-          shouldScanForAddresses: items.shouldScanForAddresses,
-          extensionBaseURL,
-        },
-      },
-      window.origin
-    );
-  }
-);
-
-// --- Inject the full implementation script ---
-const injectScriptFile = (filename: string) => {
+// --- Inject the full implementation script and wait for it to load ---
+// The injected script registers its message listener synchronously at top-level,
+// so `load` firing guarantees the listener is ready to receive SORBET_CONFIG.
+const scriptLoaded = new Promise<void>((resolve) => {
   const script = document.createElement("script");
   script.type = "text/javascript";
-  script.src = chrome.runtime.getURL(filename);
-  (document.head || document.documentElement).appendChild(script);
-  script.addEventListener("error", (e) => {
-    console.log(e);
-  });
+  script.src = chrome.runtime.getURL("js/injectedScript.js");
   script.addEventListener("load", () => {
     script.remove();
+    resolve();
   });
-};
+  script.addEventListener("error", (e) => {
+    console.log(e);
+    resolve();
+  });
+  (document.head || document.documentElement).appendChild(script);
+});
 
-injectScriptFile("js/injectedScript.js");
+// --- Read wallet config directly from storage (in parallel with script load) ---
+const storageReady = new Promise<{ [key: string]: any }>((resolve) => {
+  chrome.storage.sync.get(
+    ["wrapWallet", "impersonatedAddress", "walletType", "shouldScanForAddresses"],
+    resolve
+  );
+});
+
+// --- Post the config only once both are ready, so the listener can't miss it ---
+Promise.all([scriptLoaded, storageReady]).then(([, items]) => {
+  window.postMessage(
+    {
+      type: "SORBET_CONFIG",
+      payload: {
+        wrapWallet: items.wrapWallet,
+        impersonatedAddress: items.impersonatedAddress,
+        walletType: items.walletType ?? "impersonate",
+        shouldScanForAddresses: items.shouldScanForAddresses,
+        extensionBaseURL: chrome.runtime.getURL(""),
+      },
+    },
+    window.origin
+  );
+});
 
 // --- Relay messages between MAIN world (injected script) and background ---
 window.addEventListener("message", (event) => {

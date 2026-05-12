@@ -2,7 +2,7 @@
  * Sorbet Stub — injected synchronously at document_start in the MAIN world.
  * Registers window.cardano.sorbet immediately so dApps discover it before
  * any of their own JS runs. The real implementation (injectedScript.js)
- * patches in the actual enable()/isEnabled() later and resolves the
+ * patches in the actual enable()/isEnabled()/icon later and resolves the
  * _readyPromise so any early enable() callers get unblocked.
  */
 (function () {
@@ -23,16 +23,9 @@
   let _realEnable: (() => Promise<any>) | null = null;
   let _realIsEnabled: (() => Promise<boolean>) | null = null;
 
-  // Allow the full script to patch enable/isEnabled after loading.
-  (window as any).__sorbet_patch_api = (
-    enable: () => Promise<any>,
-    isEnabled: () => Promise<boolean>
-  ) => {
-    _realEnable = enable;
-    _realIsEnabled = isEnabled;
-  };
-
-  window.cardano.sorbet = {
+  // Hold a closure reference so we can mutate properties (e.g. icon) in place,
+  // which keeps dApps that captured an early reference in sync with the real impl.
+  const stub = {
     apiVersion: "0.1.0",
     name: "Sorbet",
     // Placeholder icon — patched with the real extension URL once available.
@@ -46,4 +39,17 @@
       return _realIsEnabled();
     },
   };
+
+  // Allow the full script to patch enable/isEnabled and the icon after loading.
+  (window as any).__sorbet_patch_api = (
+    enable: () => Promise<any>,
+    isEnabled: () => Promise<boolean>,
+    icon?: string
+  ) => {
+    _realEnable = enable;
+    _realIsEnabled = isEnabled;
+    if (icon) stub.icon = icon;
+  };
+
+  window.cardano.sorbet = stub;
 })();
