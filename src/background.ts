@@ -224,6 +224,15 @@ async function callBlockfrost<R = any>(
     return callBlockfrost(mainnet, path, params, retryCount + 1);
   }
 
+  // 404 on an address/account endpoint means "never seen on-chain" — a genuine
+  // empty, NOT a failure. Return null so callers can treat it as empty without
+  // conflating it with a transient error. Transient errors must keep throwing
+  // (below) so they propagate and get retried, rather than silently becoming a
+  // zero balance that then poisons the 30s cache.
+  if (res.status === 404) {
+    return null as R;
+  }
+
   if (!res.ok) {
     const body = await res.text();
     console.error(`Sorbet: Blockfrost ${res.status} for ${path}:`, body);
@@ -306,9 +315,10 @@ async function handleRequest(request: any) {
           page: (request?.paginate?.page ?? 1).toString(),
         }
       );
-      const addresses = addrs?.map(({ address }: { address: string }) => {
-        return address;
-      });
+      const addresses =
+        addrs?.map(({ address }: { address: string }) => {
+          return address;
+        }) ?? [];
       blockfrostCache.usedAddresses[impersonatedAddress] = setCache(addresses);
       persistCacheToSession();
       return {
@@ -419,13 +429,18 @@ async function getUtxosForAddress(mainnet: boolean, address: string): Promise<an
   let page = 1;
 
   // Speculative parallel fetch: request PARALLEL_PAGES pages at once.
+  // NOTE: we deliberately do NOT swallow page errors. callBlockfrost returns
+  // null for a 404 (a genuine empty page, past the last page or an unused
+  // address); any other failure (429 after retries, 5xx, network) throws and
+  // must propagate so the caller can retry — silently coercing it to [] here
+  // would undercount or zero the balance and then cache that wrong result.
   while (true) {
     const pageNumbers = Array.from({ length: PARALLEL_PAGES }, (_, i) => page + i);
     const pageResults = await Promise.all(
       pageNumbers.map((p) =>
-        callBlockfrost(mainnet, `/api/v0/addresses/${address}/utxos`, { page: p.toString() }).catch(
-          () => []
-        )
+        callBlockfrost<any[] | null>(mainnet, `/api/v0/addresses/${address}/utxos`, {
+          page: p.toString(),
+        })
       )
     );
 
@@ -441,7 +456,7 @@ async function getUtxosForAddress(mainnet: boolean, address: string): Promise<an
     // If no pages returned data, or the last non-empty page was not full, we're done.
     if (lastNonEmpty === -1) break;
     const lastPage = pageResults[lastNonEmpty];
-    if (lastPage.length < BLOCKFROST_PAGE_SIZE) break;
+    if (!lastPage || lastPage.length < BLOCKFROST_PAGE_SIZE) break;
 
     page += PARALLEL_PAGES;
   }

@@ -10,13 +10,16 @@ export function computeBalanceFromAmounts(addressInfos: { amount: Quantity[] }[]
 }
 
 export function foldAssets(allData: { ada: Quantity[]; assets: Quantity[] }[]) {
+  // Accumulate in BigInt: lovelace and native-token quantities are u64 values
+  // that routinely exceed Number.MAX_SAFE_INTEGER (2^53). Summing them as
+  // Number silently loses precision and, for a token near u64-max, rounds up
+  // past u64 — producing CBOR the Cardano deserializer rejects. We keep the
+  // results as decimal strings so the balance stays JSON-serializable across
+  // the extension message boundary.
   return allData.reduce((acc, { ada, assets }) => {
     acc.coin = (
-      Number(acc.coin ?? 0) +
-      ada.reduce((total, { quantity }) => {
-        total += Number(quantity);
-        return total;
-      }, 0)
+      BigInt(acc.coin ?? 0) +
+      ada.reduce((total, { quantity }) => total + BigInt(quantity), 0n)
     ).toString();
 
     if (assets) {
@@ -33,8 +36,9 @@ export function foldAssets(allData: { ada: Quantity[]; assets: Quantity[] }[]) {
         if (acc.multi_assets[policyId] === undefined) {
           acc.multi_assets[policyId] = {};
         }
-        acc.multi_assets[policyId][tokenName] =
-          Number(acc.multi_assets?.[policyId]?.[tokenName] ?? 0) + Number(quantity);
+        acc.multi_assets[policyId][tokenName] = (
+          BigInt(acc.multi_assets?.[policyId]?.[tokenName] ?? 0) + BigInt(quantity)
+        ).toString();
       });
     }
 

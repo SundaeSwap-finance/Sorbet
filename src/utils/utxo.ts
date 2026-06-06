@@ -29,9 +29,12 @@ export interface MultiAssetOut {
   output_index: any;
   amount: MultiAssetAmount;
 }
-export interface MultiAssetAmount<C = number> {
+export interface MultiAssetAmount<C = string> {
   coin: C;
-  multi_assets?: { [policyId: string]: { [tokenName: string]: number } };
+  // Decimal strings: token quantities are u64 and can exceed Number's safe
+  // integer range, so they are accumulated and stored as strings (BigInt at
+  // the CBOR-encode boundary) to avoid precision loss / overflow.
+  multi_assets?: { [policyId: string]: { [tokenName: string]: string } };
 }
 
 export function utxosToHexArray(utxos: UTxOWithAssets[]) {
@@ -111,10 +114,9 @@ export function encodeUtxos(utxos: MultiAssetIn[]): MultiAssetOut[] {
       });
 
       const balance: MultiAssetAmount = {
-        coin: ada.reduce((total: number, { quantity }: Quantity) => {
-          total += Number(quantity);
-          return total;
-        }, 0),
+        coin: ada
+          .reduce((total: bigint, { quantity }: Quantity) => total + BigInt(quantity), 0n)
+          .toString(),
       };
 
       if (assets) {
@@ -126,8 +128,9 @@ export function encodeUtxos(utxos: MultiAssetIn[]): MultiAssetOut[] {
             if (balance.multi_assets[policyId] === undefined) {
               balance.multi_assets[policyId] = {};
             }
-            balance.multi_assets[policyId][tokenName] =
-              Number(balance.multi_assets?.[policyId]?.[tokenName] ?? 0) + Number(quantity);
+            balance.multi_assets[policyId][tokenName] = (
+              BigInt(balance.multi_assets?.[policyId]?.[tokenName] ?? 0) + BigInt(quantity)
+            ).toString();
           }
         });
       }
