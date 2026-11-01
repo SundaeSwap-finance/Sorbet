@@ -3,12 +3,19 @@ import { failNextStorageOperation, flushChrome, getStorageData, setStorageData }
 import { EView, EWalletType } from "./types";
 
 describe("settings", () => {
-  it("falls back to the legacy blockfrostApiKey only while the mainnet key is empty", async () => {
+  it("falls back to the legacy blockfrostApiKey only while no mainnet key is stored", async () => {
     setStorageData("sync", { blockfrostApiKey: "legacy" });
     expect((await loadSettings(["blockfrostMainnetApiKey"])).blockfrostMainnetApiKey).toBe("legacy");
 
     setStorageData("sync", { blockfrostMainnetApiKey: "current" });
     expect((await loadSettings(["blockfrostMainnetApiKey"])).blockfrostMainnetApiKey).toBe("current");
+  });
+
+  it("keeps a cleared mainnet key cleared even if the legacy key was never deleted", async () => {
+    // State left behind when saving "" succeeds but the legacy-key removal does not.
+    setStorageData("sync", { blockfrostApiKey: "legacy", blockfrostMainnetApiKey: "" });
+
+    expect((await loadSettings(["blockfrostMainnetApiKey"])).blockfrostMainnetApiKey).toBe("");
   });
 
   it("deletes the legacy key when the mainnet key is saved, so the edit sticks", async () => {
@@ -38,6 +45,18 @@ describe("settings", () => {
       walletType: EWalletType.WRAP,
       wrapWallet: "nami",
       overrideWallet: "nami",
+    });
+  });
+
+  it("keeps a cleared override cleared for users still on the legacy 'override' wallet type", async () => {
+    setStorageData("sync", { walletType: "override", wrapWallet: "nami" });
+
+    await saveSettings({ overrideWallet: null });
+
+    expect(await loadSettings(["walletType", "wrapWallet", "overrideWallet"])).toEqual({
+      walletType: EWalletType.WRAP,
+      wrapWallet: "nami",
+      overrideWallet: null,
     });
   });
 

@@ -53,9 +53,12 @@ const STORAGE_KEY = {
   mockUtxos: "MOCK_UTXOS",
 } as const satisfies Record<SettingKey, string>;
 
-/** Pre-split mainnet key. Read as a fallback, deleted whenever the mainnet key is saved. */
+/** Pre-split mainnet key. Read only while the mainnet key is absent; deleted when the mainnet key is saved. */
 const LEGACY_BLOCKFROST_API_KEY = "blockfrostApiKey";
-/** Legacy walletType value; now WRAP plus overrideWallet = wrapWallet. */
+/**
+ * Legacy walletType value; now WRAP plus overrideWallet = wrapWallet. The derived override
+ * applies only while no overrideWallet is stored, so a saved choice (including "none") wins.
+ */
 const LEGACY_OVERRIDE_WALLET_TYPE = "override";
 /** Stored form of "no wallet" for wrapWallet/overrideWallet. */
 const NO_WALLET = "none";
@@ -128,6 +131,7 @@ function parseSettings(raw: Record<string, unknown>): Settings {
   const storedWrap = raw[STORAGE_KEY.wrapWallet];
   const wrapWallet = isWalletId(storedWrap) ? storedWrap : null;
   const storedOverride = raw[STORAGE_KEY.overrideWallet];
+  const storedMainnetKey = raw[STORAGE_KEY.blockfrostMainnetApiKey];
   const shouldScan = raw[STORAGE_KEY.shouldScanForAddresses];
   return {
     impersonatedAddress: nonEmptyString(raw[STORAGE_KEY.impersonatedAddress]) ?? "",
@@ -138,14 +142,14 @@ function parseSettings(raw: Record<string, unknown>): Settings {
     wrapWallet,
     overrideWallet: isWalletId(storedOverride)
       ? storedOverride
-      : walletType === LEGACY_OVERRIDE_WALLET_TYPE
+      : storedOverride === undefined && walletType === LEGACY_OVERRIDE_WALLET_TYPE
       ? wrapWallet
       : null,
     historyTab: parseView(raw[STORAGE_KEY.historyTab]),
     blockfrostMainnetApiKey:
-      nonEmptyString(raw[STORAGE_KEY.blockfrostMainnetApiKey]) ??
-      nonEmptyString(raw[LEGACY_BLOCKFROST_API_KEY]) ??
-      "",
+      typeof storedMainnetKey === "string"
+        ? storedMainnetKey.trim()
+        : nonEmptyString(raw[LEGACY_BLOCKFROST_API_KEY]) ?? "",
     blockfrostPreviewApiKey: nonEmptyString(raw[STORAGE_KEY.blockfrostPreviewApiKey]) ?? "",
     shouldScanForAddresses:
       typeof shouldScan === "boolean" ? shouldScan : DEFAULT_SETTINGS.shouldScanForAddresses,
@@ -181,7 +185,8 @@ function serialize<K extends SettingKey>(key: K, value: Settings[K]): unknown {
 /**
  * Persist a partial settings update. Rejects when chrome.storage fails (e.g. quota), so
  * callers can surface the failure instead of showing success. Saving the mainnet key
- * deletes the legacy `blockfrostApiKey`, which would otherwise shadow later edits.
+ * deletes the legacy `blockfrostApiKey`; that is cleanup only, since a stored mainnet key
+ * (even "") already takes precedence over it.
  */
 export async function saveSettings(patch: Partial<Settings>): Promise<void> {
   const items: Record<string, unknown> = {};
