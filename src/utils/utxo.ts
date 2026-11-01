@@ -1,150 +1,50 @@
 import * as cbor from "cbor-web";
-import { Quantity } from "../background";
+import { UTxO } from "../types";
 import { bech32ToHex } from "./addresses";
+import { MultiAssetOut, amountToCborValue, foldAssets, separateAdaFromAssets } from "./balance";
 import { Log } from "./log_util";
 
-/** Common utxo fields */
-interface UTxOBase {
-  address: string;
-  tx_hash: string;
-  output_index: number;
-}
-/** Blockfrost style unit/quantity tuples */
-export interface UTxO extends UTxOBase {
-  amount: Quantity[];
-}
-/** Coin / MultiAsset objects */
-interface UTxOWithAssets extends UTxOBase {
-  amount: MultiAssetAmount;
-}
-interface MultiAssetIn {
-  address: any;
-  tx_hash: any;
-  output_index: any;
-  amount: Quantity[];
-}
-export interface MultiAssetOut {
-  address: any;
-  tx_hash: any;
-  output_index: any;
-  amount: MultiAssetAmount;
-}
-export interface MultiAssetAmount<C = string> {
-  coin: C;
-  // Decimal strings: token quantities are u64 and can exceed Number's safe
-  // integer range, so they are accumulated and stored as strings (BigInt at
-  // the CBOR-encode boundary) to avoid precision loss / overflow.
-  multi_assets?: { [policyId: string]: { [tokenName: string]: string } };
-}
-
-export function utxosToHexArray(utxos: UTxOWithAssets[]) {
-  const encodedUTXOs = [];
-  try {
-    for (const utxo of utxos) {
-      // Skip UTxOs with invalid/empty addresses or tx_hash
-      if (!utxo.address || !utxo.tx_hash || !isValidUtxoAddress(utxo.address)) {
-        continue;
+/**
+ * CBOR-encode UTxOs. An entry with an unusable address or tx_hash is skipped with a
+ * warning; any other failure (e.g. a malformed quantity) throws.
+ */
+export function utxosToHexArray(utxos: MultiAssetOut[]): string[] {
+  const encoded: string[] = [];
+  for (const utxo of utxos) {
+    let addressBytes: Buffer;
+    let txHash: Buffer;
+    try {
+      if (!utxo.address || !/^([0-9a-fA-F]{2})+$/.test(utxo.tx_hash)) {
+        throw new Error("missing address or malformed tx_hash");
       }
-
-      let amount: bigint | [bigint, Map<Buffer, Map<Buffer, bigint>>] = BigInt(utxo.amount.coin);
-      if (utxo.amount.multi_assets && Object.keys(utxo.amount.multi_assets).length > 0) {
-        let multiAsset = new Map<Buffer, Map<Buffer, bigint>>();
-        let internedKeys: { [key: string]: Buffer } = {};
-        for (const policyId of Object.keys(utxo.amount.multi_assets)) {
-          for (const assetName of Object.keys(utxo.amount.multi_assets[policyId])) {
-            const asset = utxo.amount.multi_assets[policyId][assetName];
-            const policyIdBuffer = internedKeys[policyId] ?? Buffer.from(policyId, "hex");
-            const assetNameBuffer = internedKeys[assetName] ?? Buffer.from(assetName, "hex");
-            internedKeys[policyId] = policyIdBuffer;
-            internedKeys[assetName] = assetNameBuffer;
-            if (!multiAsset.has(policyIdBuffer)) {
-              multiAsset.set(policyIdBuffer, new Map<Buffer, bigint>());
-            }
-            multiAsset.get(policyIdBuffer)?.set(assetNameBuffer, BigInt(asset));
-          }
-        }
-        amount = [BigInt(utxo.amount.coin), multiAsset];
-      }
-
-      encodedUTXOs.push(
-        cbor
-          .encodeOne(
-            [
-              [Buffer.from(utxo.tx_hash, "hex"), utxo.output_index],
-              [Buffer.from(bech32ToHex(utxo.address), "hex"), amount],
-            ],
-            {
-              collapseBigIntegers: true,
-              highWaterMark: 65535,
-            }
-          )
-          .toString("hex")
-      );
+      addressBytes = Buffer.from(bech32ToHex(utxo.address), "hex");
+      txHash = Buffer.from(utxo.tx_hash, "hex");
+    } catch (e) {
+      Log.W(`Skipping UTxO ${utxo.tx_hash}#${utxo.output_index}: unusable address or tx_hash`, e);
+      continue;
     }
-    return encodedUTXOs;
-  } catch (e) {
-    return encodedUTXOs;
+
+    encoded.push(
+      cbor
+        .encodeOne(
+          [
+            [txHash, utxo.output_index],
+            [addressBytes, amountToCborValue(utxo.amount)],
+          ],
+          { collapseBigIntegers: true, highWaterMark: 65535 }
+        )
+        .toString("hex")
+    );
   }
+  return encoded;
 }
 
-/** Check if address is valid for encoding */
-function isValidUtxoAddress(address: string): boolean {
-  try {
-    bech32ToHex(address);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function encodeUtxos(utxos: MultiAssetIn[]): MultiAssetOut[] {
-  try {
-    // Rencode utxos from blockfrost style unit/quantity tuples, to coin / multiasset objects
-    const utxosWithAssets = utxos.map((utxo): MultiAssetOut => {
-      const { address, tx_hash, output_index, amount } = utxo;
-      let ada: Quantity[] = [];
-      let assets: Quantity[] = [];
-
-      amount?.forEach((asset: Quantity) => {
-        if (asset.unit === "lovelace") {
-          ada.push(asset);
-          return;
-        }
-        assets.push(asset);
-      });
-
-      const balance: MultiAssetAmount = {
-        coin: ada
-          .reduce((total: bigint, { quantity }: Quantity) => total + BigInt(quantity), 0n)
-          .toString(),
-      };
-
-      if (assets) {
-        balance.multi_assets = {};
-        assets.forEach(({ quantity, unit }: Quantity) => {
-          let policyId = unit.slice(0, 56);
-          let tokenName = unit.slice(56);
-          if (balance.multi_assets) {
-            if (balance.multi_assets[policyId] === undefined) {
-              balance.multi_assets[policyId] = {};
-            }
-            balance.multi_assets[policyId][tokenName] = (
-              BigInt(balance.multi_assets?.[policyId]?.[tokenName] ?? 0) + BigInt(quantity)
-            ).toString();
-          }
-        });
-      }
-
-      return {
-        address,
-        tx_hash,
-        output_index,
-        amount: balance,
-      };
-    });
-    return utxosWithAssets;
-  } catch (e) {
-    Log.E(e);
-  }
-  return [];
+/** Convert Blockfrost unit/quantity UTxOs to coin/multiasset form. Throws on a malformed quantity. */
+export function encodeUtxos(utxos: UTxO[]): MultiAssetOut[] {
+  return utxos.map(({ address, tx_hash, output_index, amount }) => ({
+    address,
+    tx_hash,
+    output_index,
+    amount: foldAssets([separateAdaFromAssets(amount)]),
+  }));
 }

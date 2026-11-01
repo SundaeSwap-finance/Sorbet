@@ -19,8 +19,10 @@ yarn-error.log*
 .env.*.local
 
 # IDE/Editor
-.vscode/
+.vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
 .idea/
 *.swp
 *.swo

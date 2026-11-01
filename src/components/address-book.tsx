@@ -23,6 +23,7 @@ import StopIcon from "@mui/icons-material/Stop";
 import SaveIcon from "@mui/icons-material/Check";
 import { isValidAddress } from "../utils/addresses";
 import { AddressBook, AddressBookItem } from "../types";
+import { addAddress, removeAddress, upsertAddressBookItem } from "../modules/addressBookStorage";
 
 interface AddressBookItemActions {
   setImpersonatedAddress: (a: string) => void;
@@ -30,61 +31,62 @@ interface AddressBookItemActions {
 interface AddressBookProps extends AddressBookItemActions {
   addressBook: AddressBook;
   impersonatedAddress: string;
-  removeFromAddressBook: (a: string) => void;
-  addOrUpdateAddressBookItem: (abe: AddressBookItem) => void;
 }
 
-interface EditMode {
-  i: number;
-  name: string;
-}
+const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** MAIN AddressBook Component */
 export const AddressBookComponent = (props: AddressBookProps): JSX.Element => {
-  const { addressBook, impersonatedAddress, setImpersonatedAddress, addOrUpdateAddressBookItem } =
-    props;
-  const [editModes, setEditModes] = useState<EditMode[]>([]);
+  const { addressBook, impersonatedAddress, setImpersonatedAddress } = props;
+  /** Name drafts of rows in edit mode, keyed by address. */
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [newAddress, setNewAddress] = useState("");
   const [addressError, setAddressError] = useState<string | null>(null);
 
-  const getEditMode = (i: number): EditMode | undefined => editModes.find((em) => em.i === i);
-  const enableEditMode = (i: number, initialName?: string): void => {
-    setEditModes([...editModes, { i, name: initialName ?? "" }]);
+  const setIsInEditMode = (address: string, editing: boolean, initialName?: string): void => {
+    setDrafts((current) => {
+      const { [address]: _removed, ...rest } = current;
+      return editing ? { ...rest, [address]: initialName ?? "" } : rest;
+    });
   };
-  const disableEditMode = (i: number): void => {
-    setEditModes([...editModes].filter((em) => em.i !== i));
-  };
-  const setIsInEditMode = (i: number, newIsInEditMode: boolean, initialName?: string): void => {
-    if (!newIsInEditMode) {
-      disableEditMode(i);
-    } else {
-      enableEditMode(i, initialName);
+  const nameInputOnChange = (address: string, name: string): void =>
+    setDrafts((current) => ({ ...current, [address]: name }));
+
+  const saveCurrentName = async (address: string): Promise<void> => {
+    const name = drafts[address];
+    if (name === undefined) return;
+    try {
+      await upsertAddressBookItem({ address, name });
+      setIsInEditMode(address, false);
+    } catch (e) {
+      setAddressError(`Could not save contact: ${errorMessage(e)}`);
     }
   };
-  const saveCurrentName = (i: number): void => {
-    const editMode = getEditMode(i);
-    if (editMode) {
-      const abe = addressBook[i];
-      addOrUpdateAddressBookItem({ ...abe, name: editMode.name });
-      setIsInEditMode(i, false);
+  const removeFromAddressBook = async (address: string): Promise<void> => {
+    try {
+      await removeAddress(address);
+      setIsInEditMode(address, false);
+    } catch (e) {
+      setAddressError(`Could not remove contact: ${errorMessage(e)}`);
     }
   };
-  const nameInputOnChange = (i: number, name: string): void => {
-    const newEditModes = [...editModes].map((em) => (em.i === i ? { i, name } : em));
-    setEditModes(newEditModes);
-  };
 
-  const handleAddAddress = () => {
-    if (!newAddress.trim()) return;
+  const handleAddAddress = async () => {
+    const address = newAddress.trim();
+    if (!address) return;
 
-    if (!isValidAddress(newAddress.trim())) {
+    if (!isValidAddress(address)) {
       setAddressError("Invalid bech32 address format");
       return;
     }
 
-    addOrUpdateAddressBookItem({ address: newAddress.trim() });
-    setNewAddress("");
-    setAddressError(null);
+    try {
+      await addAddress(address);
+      setNewAddress("");
+      setAddressError(null);
+    } catch (e) {
+      setAddressError(`Could not save contact: ${errorMessage(e)}`);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -174,23 +176,20 @@ export const AddressBookComponent = (props: AddressBookProps): JSX.Element => {
             <Chip label={addressBook.length} size="small" color="primary" />
           </Box>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {addressBook.map((abe, i) => {
-              const editMode = getEditMode(i);
-              const editModeName = editMode?.name ?? "";
-              const isInEditMode = editMode !== undefined;
+            {addressBook.map((abe) => {
+              const draft = drafts[abe.address];
               return (
                 <AddressBookItemComponent
-                  key={i}
-                  {...props}
+                  key={abe.address}
                   {...abe}
                   {...{
-                    i,
                     impersonatedAddress,
                     setIsInEditMode,
                     saveCurrentName,
+                    removeFromAddressBook,
                     nameInputOnChange,
-                    editModeName,
-                    isInEditMode,
+                    editModeName: draft ?? "",
+                    isInEditMode: draft !== undefined,
                     setImpersonatedAddress,
                   }}
                 />
@@ -209,18 +208,17 @@ const minimize = (s: string, halfN = DEFAULT_HALF_N): string =>
 
 /** Individual AddressBook Rows */
 interface AddressBookItemProps extends AddressBookItem, AddressBookItemActions {
-  i: number;
   isInEditMode: boolean;
   editModeName: string;
   impersonatedAddress: string;
-  setIsInEditMode: (i: number, newIsInEditMode: boolean, n?: string) => void;
-  saveCurrentName: (i: number) => void;
-  nameInputOnChange: (i: number, name: string) => void;
+  setIsInEditMode: (address: string, newIsInEditMode: boolean, n?: string) => void;
+  saveCurrentName: (address: string) => void;
+  nameInputOnChange: (address: string, name: string) => void;
   removeFromAddressBook: (a: string) => void;
 }
 
 const AddressBookItemComponent = (props: AddressBookItemProps): JSX.Element => {
-  const { i, name, editModeName, address, isInEditMode, nameInputOnChange, impersonatedAddress } =
+  const { name, editModeName, address, isInEditMode, nameInputOnChange, impersonatedAddress } =
     props;
   const addressIsValid = isValidAddress(address);
   const isCurrentAddress = address === impersonatedAddress;
@@ -276,7 +274,7 @@ const AddressBookItemComponent = (props: AddressBookItemProps): JSX.Element => {
               size="small"
               placeholder="Enter a label..."
               value={editModeName}
-              onChange={(e) => nameInputOnChange(i, e.currentTarget.value)}
+              onChange={(e) => nameInputOnChange(address, e.currentTarget.value)}
               autoFocus
               sx={{ "& .MuiOutlinedInput-root": { backgroundColor: "white" } }}
             />
@@ -321,7 +319,6 @@ const AddressBookItemComponent = (props: AddressBookItemProps): JSX.Element => {
 const autoHideDuration = 1500;
 
 const AddressBookButtons = ({
-  i,
   address,
   name,
   isInEditMode,
@@ -331,13 +328,16 @@ const AddressBookButtons = ({
   setImpersonatedAddress,
   impersonatedAddress,
 }: AddressBookItemProps): JSX.Element => {
-  const [alertMessage, setAlertMessage] = useState<string | undefined>();
+  const [feedback, setFeedback] = useState<
+    { message: string; severity: "success" | "error" } | undefined
+  >();
   const isCurrentAddress = address === impersonatedAddress;
 
-  const openAlert = (m: string) => setAlertMessage(m);
+  const openAlert = (message: string, severity: "success" | "error" = "success") =>
+    setFeedback({ message, severity });
   const closeAlert = (_event: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === "clickaway") return;
-    setAlertMessage(undefined);
+    setFeedback(undefined);
   };
 
   const iconBtnSx = {
@@ -380,9 +380,13 @@ const AddressBookButtons = ({
       <Tooltip title="Copy" placement="top">
         <IconButton
           size="small"
-          onClick={() => {
-            navigator.clipboard.writeText(address);
-            openAlert("Copied!");
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(address);
+              openAlert("Copied!");
+            } catch (e) {
+              openAlert(`Copy failed: ${errorMessage(e)}`, "error");
+            }
           }}
           sx={iconBtnSx}
         >
@@ -394,7 +398,7 @@ const AddressBookButtons = ({
         <Tooltip title="Save" placement="top">
           <IconButton
             size="small"
-            onClick={() => saveCurrentName(i)}
+            onClick={() => saveCurrentName(address)}
             sx={{ ...iconBtnSx, bgcolor: "success.100", color: "success.main", "&:hover": { bgcolor: "success.200" } }}
           >
             <SaveIcon sx={{ fontSize: 18 }} />
@@ -402,7 +406,7 @@ const AddressBookButtons = ({
         </Tooltip>
       ) : (
         <Tooltip title="Edit" placement="top">
-          <IconButton size="small" onClick={() => setIsInEditMode(i, true, name)} sx={iconBtnSx}>
+          <IconButton size="small" onClick={() => setIsInEditMode(address, true, name)} sx={iconBtnSx}>
             <EditIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </Tooltip>
@@ -423,13 +427,13 @@ const AddressBookButtons = ({
       </Tooltip>
 
       <Snackbar
-        open={alertMessage !== undefined}
+        open={feedback !== undefined}
         autoHideDuration={autoHideDuration}
         onClose={closeAlert}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
-        <Alert onClose={closeAlert} severity="success" sx={{ width: "100%" }}>
-          {alertMessage}
+        <Alert onClose={closeAlert} severity={feedback?.severity ?? "success"} sx={{ width: "100%" }}>
+          {feedback?.message}
         </Alert>
       </Snackbar>
     </Box>

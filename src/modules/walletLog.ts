@@ -1,7 +1,6 @@
 import { TConnectedApi } from "../../typings/cip30";
-import { sendMessageToBackground } from "../utils/sendMessageToBackground";
-
-export const STORE_WALLET_LOG_ACTION = "store_walletLog";
+import { BackgroundAction, BackgroundTransport, callBackground } from "../protocol";
+import { Log } from "../utils/log_util";
 
 /** Type depicting CIP-30 wallet methods  */
 type LoggableMethod = keyof Omit<TConnectedApi, "experimental">;
@@ -12,20 +11,25 @@ export interface WalletLog<T extends LoggableMethod = any> {
   args: Parameters<TConnectedApi[T]>;
   result: Awaited<ReturnType<TConnectedApi[T]>>;
   created: number;
+  /**
+   * Origin of the page that made the call, stamped by the background from the message
+   * sender (anything the page sends here is overwritten). Absent for extension pages.
+   */
+  origin?: string;
 }
 
-/** Construct and send a new WalletLog request to the background thread */
+/** Construct a WalletLog and send it to the background over the wallet's own transport. Failures are logged, never thrown. */
 export function walletInvoked<T extends LoggableMethod>(
+  transport: BackgroundTransport,
   methodName: T,
   args: Parameters<TConnectedApi[T]>,
   result: Awaited<ReturnType<TConnectedApi[T]>>
 ): void {
-  const request = {
-    action: STORE_WALLET_LOG_ACTION,
-    payload: newWalletLog({ methodName, args, result }),
-  };
-  console.log("[Sorbet: walletInvoked]", request.payload.methodName, "request:", request);
-  sendMessageToBackground(request);
+  const payload = newWalletLog({ methodName, args, result });
+  Log.D("walletInvoked", methodName);
+  callBackground(transport, BackgroundAction.STORE_WALLET_LOG, { payload }).catch((error: unknown) => {
+    Log.W(`Could not store wallet log for ${methodName}`, error);
+  });
 }
 
 /**

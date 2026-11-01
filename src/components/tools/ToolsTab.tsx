@@ -14,86 +14,76 @@ import React, { useState } from "react";
 import { LogViewerComponent } from "../log-viewer";
 import UTxOBuilder from "../utxo-builder";
 
-type ToolPanel = "utxo" | "logs" | null;
+type ToolPanelId = "utxo" | "logs";
+
+interface ToolPanelProps {
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  expanded: boolean;
+  onToggle: (expanded: boolean) => void;
+  children: React.ReactNode;
+}
+
+const ToolPanel: React.FC<ToolPanelProps> = ({ title, subtitle, icon, expanded, onToggle, children }) => (
+  <Accordion
+    expanded={expanded}
+    onChange={(_, isExpanded) => onToggle(isExpanded)}
+    TransitionProps={{ unmountOnExit: true }}
+    sx={{
+      borderRadius: "12px !important",
+      "&:before": { display: "none" },
+      boxShadow: "none",
+      border: "1px solid",
+      borderColor: expanded ? "primary.200" : "grey.200",
+      bgcolor: expanded ? "primary.50" : "white",
+    }}
+  >
+    <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 2, py: 0.5 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <Avatar sx={{ width: 36, height: 36, bgcolor: expanded ? "primary.100" : "grey.100" }}>{icon}</Avatar>
+        <Box>
+          <Typography variant="body2" fontWeight={600}>
+            {title}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {subtitle}
+          </Typography>
+        </Box>
+      </Box>
+    </AccordionSummary>
+    <AccordionDetails sx={{ px: 2, pt: 0, pb: 2 }}>{children}</AccordionDetails>
+  </Accordion>
+);
 
 export const ToolsTab: React.FC = () => {
-  const [expanded, setExpanded] = useState<ToolPanel>("utxo");
-
-  const handleChange = (panel: ToolPanel) => (_: React.SyntheticEvent, isExpanded: boolean) => {
-    setExpanded(isExpanded ? panel : null);
-  };
+  const [expanded, setExpanded] = useState<ToolPanelId | null>("utxo");
+  const toggle = (panel: ToolPanelId) => (isExpanded: boolean) => setExpanded(isExpanded ? panel : null);
+  const iconSx = (panel: ToolPanelId) => ({
+    fontSize: 20,
+    color: expanded === panel ? "primary.main" : "grey.600",
+  });
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-      <Accordion
+      <ToolPanel
+        title="UTxO Builder"
+        subtitle="Create custom UTxO responses"
+        icon={<BuildIcon sx={iconSx("utxo")} />}
         expanded={expanded === "utxo"}
-        onChange={handleChange("utxo")}
-        sx={{
-          borderRadius: "12px !important",
-          "&:before": { display: "none" },
-          boxShadow: "none",
-          border: "1px solid",
-          borderColor: expanded === "utxo" ? "primary.200" : "grey.200",
-          bgcolor: expanded === "utxo" ? "primary.50" : "white",
-        }}
+        onToggle={toggle("utxo")}
       >
-        <AccordionSummary
-          expandIcon={<ExpandMoreIcon />}
-          sx={{ px: 2, py: 0.5 }}
-        >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-            <Avatar sx={{ width: 36, height: 36, bgcolor: expanded === "utxo" ? "primary.100" : "grey.100" }}>
-              <BuildIcon sx={{ fontSize: 20, color: expanded === "utxo" ? "primary.main" : "grey.600" }} />
-            </Avatar>
-            <Box>
-              <Typography variant="body2" fontWeight={600}>
-                UTxO Builder
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Create custom UTxO responses
-              </Typography>
-            </Box>
-          </Box>
-        </AccordionSummary>
-        <AccordionDetails sx={{ px: 2, pt: 0, pb: 2 }}>
-          <UTxOBuilder />
-        </AccordionDetails>
-      </Accordion>
-
-      <Accordion
+        <UTxOBuilder />
+      </ToolPanel>
+      <ToolPanel
+        title="Log Viewer"
+        subtitle="Debug wallet interactions"
+        icon={<TerminalIcon sx={iconSx("logs")} />}
         expanded={expanded === "logs"}
-        onChange={handleChange("logs")}
-        sx={{
-          borderRadius: "12px !important",
-          "&:before": { display: "none" },
-          boxShadow: "none",
-          border: "1px solid",
-          borderColor: expanded === "logs" ? "primary.200" : "grey.200",
-          bgcolor: expanded === "logs" ? "primary.50" : "white",
-        }}
+        onToggle={toggle("logs")}
       >
-        <AccordionSummary
-          expandIcon={<ExpandMoreIcon />}
-          sx={{ px: 2, py: 0.5 }}
-        >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-            <Avatar sx={{ width: 36, height: 36, bgcolor: expanded === "logs" ? "primary.100" : "grey.100" }}>
-              <TerminalIcon sx={{ fontSize: 20, color: expanded === "logs" ? "primary.main" : "grey.600" }} />
-            </Avatar>
-            <Box>
-              <Typography variant="body2" fontWeight={600}>
-                Log Viewer
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Debug wallet interactions
-              </Typography>
-            </Box>
-          </Box>
-        </AccordionSummary>
-        <AccordionDetails sx={{ px: 2, pt: 0, pb: 2 }}>
-          <LogViewerComponent />
-        </AccordionDetails>
-      </Accordion>
+        <LogViewerComponent />
+      </ToolPanel>
     </Box>
   );
 };

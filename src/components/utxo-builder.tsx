@@ -5,6 +5,7 @@ import {
   Box,
   Button,
   Chip,
+  Alert,
   Collapse,
   IconButton,
   Paper,
@@ -16,23 +17,25 @@ import {
   styled,
   useTheme,
 } from "@mui/material";
-import React, { useEffect, useState } from "react";
-import { Quantity } from "../background";
+import React, { useMemo, useState } from "react";
 import { useCustomResponse } from "../hooks/useCustomResponse";
+import { UTxO } from "../types";
 import { isValidAddress } from "../utils/addresses";
 import { assetsToEncodedBalance, computeBalanceFromAmounts } from "../utils/balance";
-import {
-  MultiAssetAmount,
-  MultiAssetOut,
-  UTxO,
-  encodeUtxos,
-  utxosToHexArray,
-} from "../utils/utxo";
+import { encodeUtxos, utxosToHexArray } from "../utils/utxo";
 import { SorbetIconButton } from "./sorbet-icon-button";
 
 export default function UTxOBuilder() {
-  const { isCustomResponseEnabled, setIsCustomResponseEnabled, utxos, addU, setUi, removeUi } =
-    useCustomResponse();
+  const {
+    isCustomResponseEnabled,
+    setIsCustomResponseEnabled,
+    rows,
+    utxos,
+    error,
+    addU,
+    setUi,
+    removeUi,
+  } = useCustomResponse();
   const disabled = !isCustomResponseEnabled;
   const [showOutput, setShowOutput] = useState(false);
 
@@ -77,12 +80,14 @@ export default function UTxOBuilder() {
         Add UTxO
       </Button>
 
+      {error && <Alert severity="error">{error}</Alert>}
+
       {/* UTxO List */}
-      {utxos.map((u, idx) => (
+      {rows.map(({ key, utxo }, idx) => (
         <UTxOFieldList
-          key={idx}
+          key={key}
           index={idx}
-          {...{ disabled, u, setU: (u2) => setUi(idx, u2), removeU: () => removeUi(idx) }}
+          {...{ disabled, u: utxo, setU: (u2) => setUi(key, u2), removeU: () => removeUi(key) }}
         />
       ))}
 
@@ -99,7 +104,7 @@ export default function UTxOBuilder() {
           >
             {showOutput ? "Hide" : "Show"} Encoded Output
           </Button>
-          <Collapse in={showOutput}>
+          <Collapse in={showOutput} mountOnEnter unmountOnExit>
             <UTxOViewer {...{ disabled, utxos }} />
           </Collapse>
         </Box>
@@ -123,59 +128,55 @@ export default function UTxOBuilder() {
     </Box>
   );
 }
+const CodeBlock = ({ label, content }: { label: string; content: string }) => (
+  <Box sx={{ mb: 2 }}>
+    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: "block" }}>
+      {label}
+    </Typography>
+    <Box
+      component="pre"
+      sx={{
+        m: 0,
+        p: 1.5,
+        bgcolor: "grey.900",
+        color: "grey.100",
+        borderRadius: 1,
+        fontSize: 10,
+        fontFamily: "monospace",
+        overflow: "auto",
+        maxHeight: 120,
+      }}
+    >
+      {content}
+    </Box>
+  </Box>
+);
+
+type Encoded =
+  | { ok: true; balance: unknown; encodedBalance: string; utxosHex: string[] }
+  | { ok: false; error: string };
+
+function encode(utxos: UTxO[]): Encoded {
+  try {
+    const balance = computeBalanceFromAmounts(utxos);
+    return {
+      ok: true,
+      balance,
+      encodedBalance: assetsToEncodedBalance(balance),
+      utxosHex: utxosToHexArray(encodeUtxos(utxos)),
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 const UTxOViewer = ({ utxos, disabled }: { utxos: UTxO[]; disabled: boolean }) => {
   const theme = useTheme();
-  const [encodedUtxos, setEncodedUtxos] = useState<MultiAssetOut[]>([]);
-  const [balance, setBalance] = useState<MultiAssetAmount<string> | null>(null);
-  const [encodedBalance, setEncodedBalance] = useState<string | null>(null);
+  const encoded = useMemo(() => encode(utxos), [utxos]);
 
-  useEffect(() => {
-    if (!utxos || utxos.length === 0) {
-      setEncodedUtxos([]);
-      setBalance(null);
-      setEncodedBalance(null);
-      return;
-    }
-
-    try {
-      const validUtxos = utxos.filter((u) => u.amount && Array.isArray(u.amount));
-      setEncodedUtxos(encodeUtxos(validUtxos));
-
-      const computedBalance = computeBalanceFromAmounts(validUtxos as { amount: Quantity[] }[]);
-      setBalance(computedBalance);
-      setEncodedBalance(assetsToEncodedBalance(computedBalance as MultiAssetAmount<unknown>));
-    } catch (e) {
-      console.error("Error encoding UTxOs:", e);
-    }
-  }, [utxos]);
-
-  if (!utxos || utxos.length === 0) {
+  if (utxos.length === 0) {
     return null;
   }
-
-  const CodeBlock = ({ label, content }: { label: string; content: string }) => (
-    <Box sx={{ mb: 2 }}>
-      <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: "block" }}>
-        {label}
-      </Typography>
-      <Box
-        component="pre"
-        sx={{
-          m: 0,
-          p: 1.5,
-          bgcolor: "grey.900",
-          color: "grey.100",
-          borderRadius: 1,
-          fontSize: 10,
-          fontFamily: "monospace",
-          overflow: "auto",
-          maxHeight: 120,
-        }}
-      >
-        {content}
-      </Box>
-    </Box>
-  );
 
   return (
     <Paper
@@ -187,12 +188,15 @@ const UTxOViewer = ({ utxos, disabled }: { utxos: UTxO[]; disabled: boolean }) =
         color: disabled ? theme.palette.text.disabled : theme.palette.text.primary,
       }}
     >
-      <CodeBlock label="Balance" content={balance ? JSON.stringify(balance, null, 2) : "N/A"} />
-      <CodeBlock label="Balance (Hex)" content={encodedBalance ?? "N/A"} />
-      <CodeBlock
-        label="UTxOs (Hex)"
-        content={encodedUtxos.length > 0 ? JSON.stringify(utxosToHexArray(encodedUtxos), null, 2) : "N/A"}
-      />
+      {encoded.ok ? (
+        <>
+          <CodeBlock label="Balance" content={JSON.stringify(encoded.balance, null, 2)} />
+          <CodeBlock label="Balance (Hex)" content={encoded.encodedBalance} />
+          <CodeBlock label="UTxOs (Hex)" content={JSON.stringify(encoded.utxosHex, null, 2)} />
+        </>
+      ) : (
+        <Alert severity="error">Cannot encode UTxOs: {encoded.error}</Alert>
+      )}
     </Paper>
   );
 };
@@ -256,7 +260,7 @@ function UTxOFieldList({
       {/* TX Hash & Output Index */}
       <Box sx={{ display: "flex", gap: 1, mb: 1 }}>
         <TField fieldName="tx_hash" label="TX Hash" {...fieldProps} sx={{ flex: 2 }} />
-        <TField fieldName="output_index" label="Index" {...fieldProps} sx={{ flex: 1 }} />
+        <TField fieldName="output_index" label="Index" type="number" {...fieldProps} sx={{ flex: 1 }} />
       </Box>
 
       {/* Address */}
@@ -290,11 +294,14 @@ function UTxOFieldList({
                 label="Quantity"
                 value={a.quantity}
                 disabled={disabled}
-                onChange={(e) => {
-                  const amt = [...amount];
-                  amt[idx2].quantity = e.target.value;
-                  setU({ ...u, amount: [...amt] });
-                }}
+                onChange={(e) =>
+                  setU({
+                    ...u,
+                    amount: amount.map((q, i) =>
+                      i === idx2 ? { ...q, quantity: e.target.value } : q
+                    ),
+                  })
+                }
                 size="small"
                 sx={{ flex: 1 }}
               />
@@ -302,11 +309,12 @@ function UTxOFieldList({
                 label="Unit"
                 value={a.unit}
                 disabled={disabled}
-                onChange={(e) => {
-                  const amt = [...amount];
-                  amt[idx2].unit = e.target.value;
-                  setU({ ...u, amount: [...amt] });
-                }}
+                onChange={(e) =>
+                  setU({
+                    ...u,
+                    amount: amount.map((q, i) => (i === idx2 ? { ...q, unit: e.target.value } : q)),
+                  })
+                }
                 size="small"
                 sx={{ flex: 1 }}
               />
@@ -343,20 +351,21 @@ const UtxoField = styled(TextField)({
   },
 }) as typeof TextField;
 
-interface TFieldProps<O extends { [field: string]: any }>
+interface TFieldProps<O extends object>
   extends Partial<TextFieldProps<"outlined">> {
   fieldName: keyof O;
   obj: O;
   setObj: (u: O) => void;
   errorText?: string;
 }
-function TField<O extends { [field: string]: any }>({
+function TField<O extends object>({
   fieldName,
   obj,
   setObj,
   errorText,
   helperText,
   label,
+  type = "text",
   ...rest
 }: TFieldProps<O>) {
   const defaultLabel = (fieldName as string)
@@ -367,10 +376,14 @@ function TField<O extends { [field: string]: any }>({
   return (
     <UtxoField
       fullWidth
-      type={typeof obj[fieldName]}
+      type={type}
       label={label ?? defaultLabel}
       value={obj[fieldName]}
-      onChange={(e) => setObj({ ...obj, [fieldName]: e.target.value })}
+      onChange={(e) => {
+        if (type !== "number") return setObj({ ...obj, [fieldName]: e.target.value });
+        const parsed = Number(e.target.value);
+        if (Number.isFinite(parsed)) setObj({ ...obj, [fieldName]: parsed });
+      }}
       size="small"
       error={errorText !== undefined}
       helperText={errorText}

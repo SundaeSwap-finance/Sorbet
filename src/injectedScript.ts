@@ -1,42 +1,53 @@
-import { initSorbetDOMObjectWithProperties } from "./injected/init_sorbet_dom";
+import { initSorbetWallet } from "./injected/init_sorbet_dom";
+import { WindowMessageType, type InjectionConfig } from "./protocol";
+import { EWalletType, isWalletId } from "./types";
 import { Log } from "./utils/log_util";
-import { sendMessageToBackground } from "./utils/sendMessageToBackground";
+import { injectedTransport } from "./utils/sendMessageToBackground";
 
-try {
-  // Listen for config posted by content_script (direct storage read, no background round-trip).
-  window.addEventListener("message", async (event) => {
-    if (event.source !== window || event.data?.type !== "SORBET_CONFIG") {
-      return;
-    }
+const isNullableString = (value: unknown): value is string | null =>
+  value === null || typeof value === "string";
 
-    Log.App.Init("injectedScript starting (config via postMessage)..");
-
-    const { extensionBaseURL, wrapWallet, impersonatedAddress, walletType, shouldScanForAddresses } =
-      event.data.payload;
-
-    // Ensure window.cardano exists (stub should have created it, but be defensive).
-    if (typeof window.cardano === "undefined") {
-      window.cardano = {} as any;
-    }
-
-    // Wire up the real wallet implementation and signal readiness to the stub.
-    initSorbetDOMObjectWithProperties(extensionBaseURL, wrapWallet, impersonatedAddress, walletType);
-
-    // Resolve the stub's ready promise so any pending enable() calls complete.
-    if (typeof (window as any).__sorbet_resolve_ready === "function") {
-      (window as any).__sorbet_resolve_ready();
-    }
-
-    // DOM scanning — lazy-loaded only when enabled.
-    if (shouldScanForAddresses) {
-      const { annotateAddressesInDom } = await import("./injected/dom_scan");
-      annotateAddressesInDom();
-    } else {
-      Log.D("address scanning disabled, this can be changed in the extension options");
-    }
-
-    Log.App.Init("injectedScript complete.");
-  });
-} catch (e) {
-  Log.E(e, "initialization error");
+/** Shape check for the config message. The page shares this world, so this is not authentication. */
+function parseConfig(value: unknown): InjectionConfig | null {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value as Record<string, unknown>; // narrowed field by field below
+  const walletType = v.walletType;
+  if (walletType !== EWalletType.IMPERSONATE && walletType !== EWalletType.WRAP) return null;
+  if (typeof v.extensionBaseURL !== "string") return null;
+  if (!isNullableString(v.wrapWallet) || !isNullableString(v.overrideWallet)) return null;
+  const wrapWallet = v.wrapWallet === null ? null : isWalletId(v.wrapWallet) ? v.wrapWallet : undefined;
+  const overrideWallet =
+    v.overrideWallet === null ? null : isWalletId(v.overrideWallet) ? v.overrideWallet : undefined;
+  if (wrapWallet === undefined || overrideWallet === undefined) return null;
+  return { walletType, wrapWallet, overrideWallet, extensionBaseURL: v.extensionBaseURL };
 }
+
+let configured = false;
+
+// The content script posts the config once; only the first well-formed config is honored.
+window.addEventListener("message", (event) => {
+  if (configured || event.source !== window) return;
+  const data: unknown = event.data;
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    !("type" in data) ||
+    data.type !== WindowMessageType.SORBET_CONFIG
+  ) {
+    return;
+  }
+  const config = parseConfig("payload" in data ? data.payload : undefined);
+  if (!config) {
+    Log.W("ignoring malformed SORBET_CONFIG");
+    return;
+  }
+  configured = true;
+
+  Log.App.Init("injectedScript starting (config via postMessage)..");
+  const installed = initSorbetWallet(config, { p2p: false, transport: injectedTransport });
+  if (!installed) {
+    window.__sorbet_fail("Sorbet wallet could not be initialized (check the extension settings)");
+    return;
+  }
+  Log.App.Init("injectedScript complete.");
+});

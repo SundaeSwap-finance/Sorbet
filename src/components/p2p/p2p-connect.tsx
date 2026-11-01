@@ -18,9 +18,10 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useP2P } from "../../hooks/useP2P";
 import { P2PConnection, P2PDapp } from "../../modules/cip45-peer-connect";
+import { Log } from "../../utils/log_util";
 
 /** Component with P2P Connection & Peer Id state managed externally  */
 export const P2PConnectComponent = () => (
@@ -63,12 +64,18 @@ export const P2PConnectComponent = () => (
 /** Component to manage newly entered peerId state manually */
 export const P2PConnectInput = () => {
   const [peerId, setPeerId] = useState<string>("");
+  const [error, setError] = useState<string>();
   const { connectP2P } = useP2P();
 
-  const handleConnect = () => {
-    if (peerId.trim()) {
-      connectP2P(peerId.trim());
+  const handleConnect = async () => {
+    const trimmed = peerId.trim();
+    if (!trimmed) return;
+    try {
+      await connectP2P(trimmed);
+      setError(undefined);
       setPeerId("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -109,6 +116,11 @@ export const P2PConnectInput = () => {
           },
         }}
       />
+      {error !== undefined && (
+        <Alert severity="error" sx={{ mt: 1 }}>
+          {error}
+        </Alert>
+      )}
       <Button
         fullWidth
         variant="contained"
@@ -126,12 +138,7 @@ export const P2PConnectInput = () => {
 /** Component to manage P2P connect / disconnect commands */
 function P2PConnectButton({ peerId }: { peerId?: string }): React.ReactNode {
   const { connectP2P, disconnectP2P, p2pConnections } = useP2P();
-  const [isConnected, setIsConnected] = useState(false);
-
-  useEffect(() => {
-    if (!peerId) return;
-    setIsConnected(p2pConnections[peerId]?.connection?.connected === true);
-  }, [peerId, p2pConnections]);
+  const isConnected = peerId !== undefined && p2pConnections[peerId]?.connection.connected === true;
 
   const disabled = peerId === undefined || peerId === "";
 
@@ -146,7 +153,7 @@ function P2PConnectButton({ peerId }: { peerId?: string }): React.ReactNode {
             if (isConnected) {
               disconnectP2P(peerId);
             } else {
-              connectP2P(peerId);
+              connectP2P(peerId).catch((e) => Log.E("p2p: reconnect failed", peerId, e));
             }
           }}
           sx={{
@@ -166,7 +173,7 @@ function P2PConnectButton({ peerId }: { peerId?: string }): React.ReactNode {
 
 /** Component to display all current P2P connections & dApps */
 const P2PConnectionsList = () => {
-  const { p2pConnections, removeP2PConnection } = useP2P() ?? {};
+  const { p2pConnections, removeP2PConnection } = useP2P();
   const connections = Object.entries(p2pConnections);
 
   if (connections.length === 0) {
@@ -210,18 +217,15 @@ const P2PConnectionsList = () => {
         </Typography>
         <Chip label={connections.length} size="small" color="primary" />
       </Box>
-      {connections.map(([peerId, c]) => {
-        const { seed, connection } = c ?? {};
-        return (
-          <DAppConnectionCard
-            key={peerId}
-            peerId={peerId}
-            seed={seed}
-            connection={connection}
-            removeP2PConnection={removeP2PConnection}
-          />
-        );
-      })}
+      {connections.map(([peerId, { seed, connection }]) => (
+        <DAppConnectionCard
+          key={peerId}
+          peerId={peerId}
+          seed={seed}
+          connection={connection}
+          removeP2PConnection={removeP2PConnection}
+        />
+      ))}
     </Box>
   );
 };
@@ -284,7 +288,7 @@ function DAppConnectionCard({
         </Box>
 
         <Box sx={{ display: "flex", gap: 0.5 }}>
-          <P2PConnectButton peerId={dApp?.address || peerId} />
+          <P2PConnectButton peerId={peerId} />
           <Tooltip title="Remove">
             <IconButton
               size="small"

@@ -1,133 +1,149 @@
+import { apiError, backgroundErrorToApiError } from "../modules/apiError";
 import { ImpersonatedWallet } from "../modules/ImpersonatedWallet.class";
-import { EWalletType } from "../types";
+import {
+  BackgroundAction,
+  BackgroundError,
+  callBackground,
+  type BackgroundTransport,
+  type InjectionConfig,
+} from "../protocol";
+import { EWalletType, type WalletId } from "../types";
 import { Log } from "../utils/log_util";
 import { addToAddressBook, setAddress } from "./messages";
 
 /** The base name for the property in the cardano DOM object, e.g. cardano.sorbet, cardano.sorbet_p2p */
 const SORBET_DOM_WALLET_NAME = "sorbet";
 
-/**
- * Use passed args to initialize the cardano.sorbet DOM object
- * @param extensionBaseURL
- * @param wallet
- * @param impersonatedAddress
- * @param walletType
- * @param p2pIsConnected
- */
-export async function initSorbetDOMObjectWithProperties(
-  extensionBaseURL: string,
-  wallet: string,
-  impersonatedAddress: string,
-  walletType: EWalletType,
-  p2pIsConnected = false,
-  isInjected = true
-) {
-  Log.D(`initSorbetDOMObjectWithProperties`, {
-    extensionBaseURL,
-    wallet,
-    impersonatedAddress,
-    walletType,
-    p2pIsConnected,
-    isInjected,
-  });
-  if (walletType !== EWalletType.IMPERSONATE && wallet) {
-    initializeSorbetWallet_NOT_Impersonate(walletType, wallet, extensionBaseURL, p2pIsConnected);
-  } else if (walletType === EWalletType.IMPERSONATE) {
-    initSorbetWallet_Impersonate(extensionBaseURL, impersonatedAddress, p2pIsConnected, isInjected);
-  } else {
-    Log.W(`no wallet initiated.`);
-  }
-}
-
-function initSorbetWallet_Impersonate(
-  extensionBaseURL: string,
-  impersonatedAddress: any,
-  p2pIsConnected: boolean,
-  isInjected: boolean
-) {
-  try {
-    let instance: ImpersonatedWallet;
-    const domWalletName = SORBET_DOM_WALLET_NAME + (p2pIsConnected ? "_p2p" : "");
-    makeSorbetWallet(domWalletName, extensionBaseURL, {
-      enable: async function () {
-        instance = new ImpersonatedWallet(isInjected);
-        return instance;
-      },
-      isEnabled: async function () {
-        return instance instanceof ImpersonatedWallet;
-      },
-    });
-    Log.App.Init(
-      `${domWalletName} wallet injected (impersonating: ${
-        impersonatedAddress ?? "no wallet address set"
-      }).`
-    );
-  } catch (e) {
-    Log.E(e, "impersonate wallet initialization error");
-  }
-}
-
-function initializeSorbetWallet_NOT_Impersonate(
-  walletType: any,
-  wallet: any,
-  extensionBaseURL: string,
-  p2pIsConnected: boolean
-) {
-  const domWalletName =
-    (walletType === EWalletType.OVERRIDE ? wallet : SORBET_DOM_WALLET_NAME) +
-    (p2pIsConnected ? "_p2p" : "");
-  makeSorbetWallet(domWalletName, extensionBaseURL, {
-    enable: async function () {
-      return window.cardano[wallet].enable();
-    },
-    isEnabled: async function () {
-      return window.cardano[wallet].isEnabled();
-    },
-  });
-  Log.App.Init(
-    `${domWalletName} wallet injected (${
-      walletType === EWalletType.OVERRIDE ? "overriding" : "wrapping"
-    } ${wallet}).`
-  );
-}
-
-/** Sorbet Wallet interface */
-interface SorbetWallet {
-  apiVersion: string;
-  icon: string;
-  name: string;
-  setAddress: (a: string) => void;
-  addToAddressBook: (a: string) => void;
-  enable: () => Promise<any>;
+interface CardanoWallet {
+  enable: () => Promise<unknown>;
   isEnabled: () => Promise<boolean>;
 }
+
+const isCardanoWallet = (value: unknown): value is CardanoWallet =>
+  typeof value === "object" &&
+  value !== null &&
+  "enable" in value &&
+  typeof value.enable === "function" &&
+  "isEnabled" in value &&
+  typeof value.isEnabled === "function";
+
+/**
+ * Install the Sorbet wallet on `window.cardano` per the config.
+ * Returns whether a wallet object was installed; failures are logged, never thrown.
+ */
+export function initSorbetWallet(
+  config: InjectionConfig,
+  options: { p2p: boolean; transport: BackgroundTransport }
+): boolean {
+  Log.D("initSorbetWallet", { ...config, ...options, transport: undefined });
+  try {
+    if (typeof window.cardano === "undefined") {
+      window.cardano = {};
+    }
+    const domWalletName = SORBET_DOM_WALLET_NAME + (options.p2p ? "_p2p" : "");
+    // Capture the original before anything replaces it, and keep capturing later assignments.
+    const original = options.p2p ? null : captureOverriddenWallet(config.overrideWallet);
+
+    if (config.walletType === EWalletType.IMPERSONATE) {
+      // One wallet instance per page, handed out once the user has connected this site.
+      let instance: ImpersonatedWallet | null = null;
+      const wallet = makeSorbetWallet(domWalletName, config.extensionBaseURL, {
+        enable: async () => {
+          try {
+            await callBackground(options.transport, BackgroundAction.REQUEST_CONNECT, {});
+          } catch (e) {
+            throw e instanceof BackgroundError ? backgroundErrorToApiError(e) : e;
+          }
+          instance ??= new ImpersonatedWallet(options.transport);
+          return instance;
+        },
+        isEnabled: async () => {
+          try {
+            return await callBackground(options.transport, BackgroundAction.IS_CONNECTED, {});
+          } catch (e) {
+            throw e instanceof BackgroundError ? backgroundErrorToApiError(e) : e;
+          }
+        },
+      });
+      installOverride(config.overrideWallet, original, wallet);
+      Log.App.Init(`${domWalletName} wallet injected (impersonating).`);
+      return true;
+    }
+
+    const wrapId = config.wrapWallet;
+    if (!wrapId) {
+      Log.W("no wallet to wrap configured; Sorbet wallet not installed.");
+      return false;
+    }
+    const wrapped = (): CardanoWallet => {
+      const target = wrapId === config.overrideWallet ? original?.get() : window.cardano[wrapId];
+      if (!isCardanoWallet(target)) {
+        throw apiError(`Wrapped wallet "${wrapId}" is not available on this page`);
+      }
+      return target;
+    };
+    const wallet = makeSorbetWallet(domWalletName, config.extensionBaseURL, {
+      enable: async () => wrapped().enable(),
+      isEnabled: async () => wrapped().isEnabled(),
+    });
+    installOverride(config.overrideWallet, original, wallet);
+    Log.App.Init(`${domWalletName} wallet injected (wrapping ${wrapId}).`);
+    return true;
+  } catch (e) {
+    Log.E(e, "sorbet wallet initialization error");
+    return false;
+  }
+}
+
+interface OriginalWalletSlot {
+  get: () => unknown;
+  set: (value: unknown) => void;
+}
+
+/** Remember the current `window.cardano[id]` so Sorbet can delegate to it after replacing it. */
+function captureOverriddenWallet(id: WalletId | null): OriginalWalletSlot | null {
+  if (!id) return null;
+  let current: unknown = window.cardano[id];
+  return { get: () => current, set: (value) => (current = value) };
+}
+
+/**
+ * Make `window.cardano[id]` resolve to the Sorbet wallet. Later assignments by the real wallet's
+ * extension are captured as the original instead of replacing Sorbet.
+ */
+function installOverride(
+  id: WalletId | null,
+  original: OriginalWalletSlot | null,
+  sorbetWallet: object
+): void {
+  if (!id || !original) return;
+  Object.defineProperty(window.cardano, id, {
+    configurable: true,
+    enumerable: true,
+    get: () => sorbetWallet,
+    set: (value: unknown) => original.set(value),
+  });
+}
+
 const makeSorbetWallet = (
   domWalletName: string,
   extensionBaseURL: string,
-  enableFns: Pick<SorbetWallet, "enable" | "isEnabled">
-) => {
-  const baseProperties = {
+  enableFns: CardanoWallet
+): object => {
+  const icon = `${extensionBaseURL}sorbet.png`;
+  const wallet = {
     apiVersion: "0.1.0",
-    icon: `${extensionBaseURL}sorbet.png`,
+    icon,
     name: "Sorbet",
     setAddress,
     addToAddressBook,
-  };
-  window.cardano[domWalletName] = {
-    ...baseProperties,
     ...enableFns,
   };
+  window.cardano[domWalletName] = wallet;
 
-  // Patch the stub's icon and forward enable/isEnabled to the real implementation.
-  // This ensures early enable() callers (who got the stub's promise) complete correctly,
-  // and dApps that captured an early reference to the stub see the real icon.
-  if (domWalletName === SORBET_DOM_WALLET_NAME) {
-    if (typeof (window as any).__sorbet_patch_api === "function") {
-      (window as any).__sorbet_patch_api(
-        enableFns.enable,
-        enableFns.isEnabled,
-        baseProperties.icon
-      );
-    }
+  // Hand the real enable/isEnabled/icon to the stub so early callers complete.
+  if (domWalletName === SORBET_DOM_WALLET_NAME && typeof window.__sorbet_patch_api === "function") {
+    window.__sorbet_patch_api(enableFns.enable, enableFns.isEnabled, icon);
   }
+  return wallet;
 };

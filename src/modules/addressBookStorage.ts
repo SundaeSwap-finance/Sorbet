@@ -1,74 +1,62 @@
 import { AddressBook, AddressBookItem } from "../types";
-import { Log } from "../utils/log_util";
+import { createSerialQueue, onStorageChanged, storageGet, storageSet } from "../utils/storage";
 
-const StorageKeys = {
-  ADDRESS_BOOK: "addressBook",
-};
-const EMPTY_ADDRESS_BOOK: AddressBook = [];
+const ADDRESS_BOOK_KEY = "addressBook";
 
-type AddressBookUpdatedCallback = (addressBook: AddressBook) => void;
+const enqueue = createSerialQueue();
 
-export const parseAddressBookFromStorage = (result: {
-  addressBook?: AddressBook;
-}): AddressBook | undefined => {
-  if (result.addressBook && Array.isArray(result.addressBook)) {
-    return result.addressBook.map((e) =>
-      typeof e === "string" ? ({ address: e } as AddressBookItem) : e
-    );
-  }
-  return undefined;
-};
-
-export const addItemToAddressBook = (
-  newValue: string,
-  addressBookUpdated: AddressBookUpdatedCallback
-): void => {
-  getAddressBook((ab) => {
-    const addressBook = ab;
-    if (addressBook.find((abe) => abe.address === newValue)) return;
-    addressBook.push({ address: newValue });
-    chrome.storage.sync.set({ addressBook }, function () {
-      Log.D("new item saved to AddressBook:", addressBook);
-      addressBookUpdated(addressBook);
-    });
-  });
-};
-
-export const addOrUpdateItemInAddressBook = (
-  newItem: AddressBookItem,
-  addressBookUpdated: AddressBookUpdatedCallback
-) => {
-  getAddressBook((addressBook) => {
-    const found = addressBook.find((abe) => abe.address === newItem.address);
-    if (!found) {
-      // Add new item
-      addressBook.push(newItem);
-    } else {
-      // Item found, update
-      addressBook = addressBook.map((abe) => (abe.address === newItem.address ? newItem : abe));
+/**
+ * Parse a stored address book once at the boundary. Legacy entries were plain address
+ * strings; entries without a string address are dropped; `name` is kept only when a string.
+ * Always returns a fresh array.
+ */
+const parseAddressBook = (raw: unknown): AddressBook => {
+  if (!Array.isArray(raw)) return [];
+  const book: AddressBook = [];
+  for (const entry of raw as unknown[]) {
+    if (typeof entry === "string") {
+      book.push({ address: entry });
+    } else if (typeof entry === "object" && entry !== null) {
+      const { address, name } = entry as { address?: unknown; name?: unknown };
+      if (typeof address !== "string") continue;
+      book.push(typeof name === "string" ? { address, name } : { address });
     }
-    chrome.storage.sync.set({ addressBook }, function () {
-      Log.D(addressBook);
-      addressBookUpdated(addressBook);
-    });
-  });
+  }
+  return book;
 };
 
-export const deleteFromAddressBook = (
-  valueToRemove: string,
-  addressBookUpdated: AddressBookUpdatedCallback
-) => {
-  getAddressBook((addressBook) => {
-    const newAddressBook = addressBook.filter((abe) => abe.address !== valueToRemove);
-    chrome.storage.sync.set({ addressBook: newAddressBook }, function () {
-      Log.D(newAddressBook);
-      addressBookUpdated(newAddressBook);
-    });
-  });
-};
+export const loadAddressBook = async (): Promise<AddressBook> =>
+  parseAddressBook((await storageGet("sync", [ADDRESS_BOOK_KEY]))[ADDRESS_BOOK_KEY]);
 
-function getAddressBook(addressBookRetrieved: (addressBook: AddressBook) => void) {
-  chrome.storage.sync.get([StorageKeys.ADDRESS_BOOK], (result) => {
-    addressBookRetrieved(parseAddressBookFromStorage(result) ?? EMPTY_ADDRESS_BOOK);
+/** Serialized read-modify-write. A `null` result from `update` means "no change". */
+const modify = (update: (book: AddressBook) => AddressBook | null): Promise<AddressBook> =>
+  enqueue(async () => {
+    const book = await loadAddressBook();
+    const next = update(book);
+    if (next === null) return book;
+    await storageSet("sync", { [ADDRESS_BOOK_KEY]: next });
+    return next;
   });
-}
+
+/** Add an address; no-op when already present (an existing entry is never changed). */
+export const addAddress = (address: string): Promise<AddressBook> =>
+  modify((book) =>
+    book.some((entry) => entry.address === address) ? null : [...book, { address }]
+  );
+
+/** Insert the item, or merge it into the existing entry with the same address. */
+export const upsertAddressBookItem = (item: AddressBookItem): Promise<AddressBook> =>
+  modify((book) =>
+    book.some((entry) => entry.address === item.address)
+      ? book.map((entry) => (entry.address === item.address ? { ...entry, ...item } : entry))
+      : [...book, item]
+  );
+
+export const removeAddress = (address: string): Promise<AddressBook> =>
+  modify((book) => book.filter((entry) => entry.address !== address));
+
+/** Subscribe to address book changes (any context). Returns the unsubscribe function. */
+export const onAddressBookChanged = (listener: (book: AddressBook) => void): (() => void) =>
+  onStorageChanged("sync", [ADDRESS_BOOK_KEY], (changes) =>
+    listener(parseAddressBook(changes[ADDRESS_BOOK_KEY]?.newValue))
+  );
