@@ -25,6 +25,7 @@ Begin, Eternl, Nami, Typhon, Yoroi, Lace, Flint, Vespr
 
 ### Prerequisites
 - [Bun](https://bun.sh/) v1.0+
+- [Node.js](https://nodejs.org/) 22+ (`bun run test` runs jest under `node`)
 - Chrome, Brave, or Edge browser
 - [Blockfrost API key](https://blockfrost.io/) (free tier available)
 
