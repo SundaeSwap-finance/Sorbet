@@ -1,10 +1,14 @@
-import { sendMessageToBackground } from "../utils/sendMessageToBackground";
+import { BackgroundAction, callBackground } from "../protocol";
+import { injectedTransport } from "../utils/sendMessageToBackground";
 
-/**  expose Wallet Address setter functionality to the page. Sends a message to background. */
+/**
+ * Expose wallet address setter to the page. Waits for the user's approval unless the site was
+ * allowed always; rejects when refused or when the background rejects (e.g. invalid address).
+ */
 export const setAddress = async function (address: string): Promise<void> {
-  await sendMessageToBackground({ action: "setAddress", address });
+  await callBackground(injectedTransport, BackgroundAction.SET_ADDRESS, { address });
 };
-/**  expose Add to Address Book functionality to the page. Sends a message to background. */
+/** Expose add-to-address-book to the page. Same approval rules as `setAddress`. */
 export const addToAddressBook = async function (address: string): Promise<void> {
-  await sendMessageToBackground({ action: "addToAddressBook", address });
+  await callBackground(injectedTransport, BackgroundAction.ADD_TO_ADDRESS_BOOK, { address });
 };

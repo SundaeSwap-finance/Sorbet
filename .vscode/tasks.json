@@ -27,6 +27,12 @@
             "type": "shell",
             "group": "build",
             "command": "npm",
+            "args": ["run", "build"]
+        },
+        {
+            "label": "watch",
+            "type": "shell",
+            "command": "npm",
             "args": ["run", "watch"]
         }
     ]

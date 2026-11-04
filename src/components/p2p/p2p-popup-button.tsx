@@ -5,45 +5,53 @@ import LinkIcon from "@mui/icons-material/Link";
 import LinkOffIcon from "@mui/icons-material/LinkOff";
 import { Box, Button, Chip, Paper, Typography } from "@mui/material";
 import React, { useEffect, useState } from "react";
-import { P2PStorageKeys, makeStorageChangeListener } from "../../utils/storage";
+import { loadP2PIsConnected, onP2PIsConnectedChanged } from "../../modules/p2pStorage";
+import { PageMessageAction } from "../../protocol";
+import { Log } from "../../utils/log_util";
+
+const P2P_POPUP_WINDOW_NAME = "p2p_popup";
+const POPUP_POLL_MS = 2000;
 
 /** Button to launch P2P controls in a popup window  */
 export const P2P_PopupButton = () => {
-  const P2P_POPUP_WINDOW_NAME = "p2p_popup";
-  const [p2pPopup, setP2pPopup] = useState<Window>();
-  const hasPopup = p2pPopup !== undefined && !p2pPopup.closed;
+  const [hasPopup, setHasPopup] = useState(false);
 
+  /** The manager window answers this ping while it is open, so closing it is noticed too. */
   useEffect(() => {
-    chrome.runtime.sendMessage({ action: "p2p_popup_exists" }, (response) => {
-      if (response?.popupWindowExists) {
-        const popupWindow = window.open("", P2P_POPUP_WINDOW_NAME);
-        if (popupWindow) setP2pPopup(popupWindow);
-      }
-    });
+    let active = true;
+    const ping = () =>
+      chrome.runtime.sendMessage({ action: PageMessageAction.P2P_POPUP_EXISTS }, (response) => {
+        // "Receiving end does not exist" simply means no manager window is open.
+        void chrome.runtime.lastError;
+        if (active) setHasPopup(response?.popupWindowExists === true);
+      });
+    ping();
+    const timer = setInterval(ping, POPUP_POLL_MS);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, []);
 
   const [isConnected, setIsConnected] = useState(false);
   useEffect(() => {
-    const listener = makeStorageChangeListener(
-      P2PStorageKeys.P2P_IS_CONNECTED,
-      (isConnected: boolean) => setIsConnected(isConnected),
-      true,
-      ""
-    );
-    return () => listener();
+    let active = true;
+    loadP2PIsConnected()
+      .then((connected) => active && setIsConnected(connected))
+      .catch((e) => Log.E("p2p-popup-button: failed to read the connected flag", e));
+    const unsubscribe = onP2PIsConnectedChanged(setIsConnected);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   const openP2PWindow = () => {
-    const popupWindow = window.open(
+    window.open(
       chrome.runtime.getURL("p2p_popup.html") + "#",
       P2P_POPUP_WINDOW_NAME,
       "width=420,height=580"
     );
-    if (popupWindow && !popupWindow.closed) {
-      setP2pPopup(popupWindow);
-    } else {
-      setP2pPopup(undefined);
-    }
   };
 
   return (

@@ -1,79 +1,68 @@
-type StorageKey = P2PStorageKeys | CustomResponseStorageKeys;
+export type StorageAreaName = "sync" | "local" | "session";
+export type StorageChanges = { [key: string]: chrome.storage.StorageChange };
 
-/** Custom UTxO Builder */
-export type CustomResponseStorageKeys =
-  (typeof CustomResponseStorageKeys)[keyof typeof CustomResponseStorageKeys];
-export const CustomResponseStorageKeys = {
-  MOCK_UTXOS: "MOCK_UTXOS",
-  CUSTOM_RESPONSE_ENABLED: "CUSTOM_RESPONSE_ENABLED",
-} as const;
+const storageArea = (areaName: StorageAreaName): chrome.storage.StorageArea =>
+  chrome.storage[areaName];
 
-/** CIP-45 aka P2P Connect, or Peer Connect */
-export type P2PStorageKeys = (typeof P2PStorageKeys)[keyof typeof P2PStorageKeys];
-export const P2PStorageKeys = {
-  P2P_SEEDS: "p2p_seeds",
-  P2P_IS_CONNECTED: "p2p_isConnected",
-} as const;
-
-/**
- * Retrieve objects from storage
- * @param keys storage key names to retrieve
- * @returns
- */
-export function getFromStorage(
-  keys:
-    | string
-    | string[]
-    | {
-        [key: string]: any;
-      }
-    | null
-): Promise<Record<string, any>> {
-  return new Promise((resolve, reject) => {
-    chrome.storage.sync.get(keys, (items) => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        reject(error);
-      } else {
-        resolve(items);
-      }
-    });
+/** Run a chrome callback API and settle on chrome.runtime.lastError. */
+function withLastError<T>(run: (done: (value: T) => void) => void): Promise<T> {
+  const { promise, resolve, reject } = Promise.withResolvers<T>();
+  run((value) => {
+    const error = chrome.runtime.lastError;
+    if (error) {
+      reject(new Error(error.message ?? "chrome.storage operation failed"));
+    } else {
+      resolve(value);
+    }
   });
+  return promise;
+}
+
+/** Read `keys` from a storage area. Missing keys are absent from the result. */
+export function storageGet(
+  areaName: StorageAreaName,
+  keys: readonly string[]
+): Promise<Record<string, unknown>> {
+  return withLastError((done) => storageArea(areaName).get([...keys], (items) => done(items)));
+}
+
+/** Write `items` to a storage area. Rejects when chrome reports an error (e.g. quota). */
+export function storageSet(areaName: StorageAreaName, items: Record<string, unknown>): Promise<void> {
+  return withLastError((done) => storageArea(areaName).set(items, () => done(undefined)));
+}
+
+/** Delete `keys` from a storage area. */
+export function storageRemove(areaName: StorageAreaName, keys: readonly string[]): Promise<void> {
+  return withLastError((done) => storageArea(areaName).remove([...keys], () => done(undefined)));
 }
 
 /**
- * Make a new function to listen for storage changes : for use inside of a local useEffect hook
- * @TODO allow for multiple properties in one listener
- * @param storageKey
- * @param currentVal
- * @param sendUpdate
- * @param executeOnAdd specifies to execute a storage retrieval once when adding
- * @param defaultVal the default value to use if executeOnAdd == true
- * @returns the remove hook for returning from useEffect
- *
- * @TODO allow for passing a list of objectify storage properties, e.g. {storageKey, setter}[]
+ * Subscribe to changes of `keys` in one storage area. The listener only fires when at
+ * least one of `keys` changed in `areaName`. Returns the unsubscribe function.
  */
-export const makeStorageChangeListener = (
-  storageKey: StorageKey,
-  sendUpdate: (newVal: any) => void,
-  executeOnAdd?: true,
-  defaultVal?: any
-) => {
-  if (executeOnAdd) {
-    chrome.storage.sync.get([storageKey], function (result) {
-      sendUpdate(result[storageKey] ?? defaultVal);
-    });
-  }
-  const storageChangedListener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-    const shouldUpdateState =
-      changes[storageKey] !== undefined &&
-      changes[storageKey].newValue !== changes[storageKey].oldValue;
-    if (shouldUpdateState) {
-      sendUpdate(changes[storageKey].newValue);
-    }
+export function onStorageChanged(
+  areaName: StorageAreaName,
+  keys: readonly string[],
+  listener: (changes: StorageChanges) => void
+): () => void {
+  const handler = (changes: StorageChanges, changedArea: string) => {
+    if (changedArea !== areaName) return;
+    if (!keys.some((key) => key in changes)) return;
+    listener(changes);
   };
-  chrome.storage.onChanged.addListener(storageChangedListener);
-  return () => {
-    chrome.storage.onChanged.removeListener(storageChangedListener);
+  chrome.storage.onChanged.addListener(handler);
+  return () => chrome.storage.onChanged.removeListener(handler);
+}
+
+/**
+ * Serialize async read-modify-write tasks within one JS context. Each task starts after
+ * the previous one settles; a failed task does not block later ones.
+ */
+export function createSerialQueue(): <T>(task: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(task: () => Promise<T>): Promise<T> => {
+    const result = tail.then(task, task);
+    tail = result.catch(() => undefined);
+    return result;
   };
-};
+}

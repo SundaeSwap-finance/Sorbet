@@ -1,6 +1,17 @@
 type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "FATAL" | "APP";
 let logLevel: LogLevel = "DEBUG";
 
+const LEVEL_ORDER: Record<LogLevel, number> = {
+  TRACE: 0,
+  DEBUG: 1,
+  INFO: 2,
+  WARN: 3,
+  ERROR: 4,
+  FATAL: 5,
+  APP: 6,
+};
+const isLevelEnabled = (level: LogLevel): boolean => LEVEL_ORDER[logLevel] <= LEVEL_ORDER[level];
+
 /** dedicated property to toggle App level logging */
 let isAppDebuggingEnabled: boolean = true;
 
@@ -17,7 +28,7 @@ const formatLogMessage = (thisCallsLevel: LogLevel, ...data: any[]) => {
   const objectArr: any = [];
   const dataString = data
     .map((d) => {
-      const logAsObj: boolean = typeof d === "object" || typeof d === undefined;
+      const logAsObj: boolean = typeof d === "object" || typeof d === "undefined";
       if (logAsObj) {
         objectArr.push(d);
       }
@@ -29,7 +40,7 @@ const formatLogMessage = (thisCallsLevel: LogLevel, ...data: any[]) => {
 };
 
 const consoleLog = (thisCallsLevel: LogLevel, ...optionalParams: any[]) => {
-  if (logLevel <= thisCallsLevel) {
+  if (isLevelEnabled(thisCallsLevel)) {
     const [logMessage, logObjects] = formatLogMessage(thisCallsLevel, ...optionalParams);
     console.log(logMessage, baseTagStyle, "", logTagStyle(thisCallsLevel), "", ...logObjects);
   }
@@ -75,7 +86,7 @@ border-radius: 4px;
 border-size: 1;
 border-color: ${color}; 
 border-style: solid;
-font-weight: bold';
+font-weight: bold;
 `;
 const baseTagStyle = tagStyled("#6A150C");
 const appTagStyle = tagStyled("#0084b0");
@@ -105,7 +116,7 @@ export const Log = {
     consoleLog("WARN", ...data);
   },
   E: (error: any, ...data: any[]): void => {
-    if (logLevel <= "ERROR") {
+    if (isLevelEnabled("ERROR")) {
       if (typeof error === "string") {
         consoleErrorMessage(error, ...data);
       } else if (error instanceof Error) {

@@ -1,53 +1,67 @@
-import { CssBaseline } from "@mui/material";
+import { Alert, CssBaseline } from "@mui/material";
 import { ThemeProvider } from "@mui/material/styles";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { P2PConnectComponent } from "./components/p2p/p2p-connect";
 import { P2PProvider } from "./hooks/useP2P";
-import { initSorbetDOMObjectWithProperties } from "./injected/init_sorbet_dom";
+import { initSorbetWallet } from "./injected/init_sorbet_dom";
+import { PageMessageAction, runtimeTransport } from "./protocol";
+import { WALLET_INJECTION_KEYS, loadSettings } from "./settings";
 import { sorbetTheme } from "./theme";
 import { Log } from "./utils/log_util";
-import { getFromStorage } from "./utils/storage";
-
-export const BackgroundMessageActions = {
-  connectP2P: "connectP2PClient",
-  disconnectP2P: "disconnectP2PClient",
-};
 
 const P2P_Popup = () => {
-  async function loadP2PWalletDom() {
-    if (typeof window.cardano === "undefined") {
-      window.cardano = {};
-    }
-    const extensionBaseURL = chrome.runtime.getURL("");
-    const storage = await getFromStorage(["wrapWallet", "impersonatedAddress", "walletType"]);
-    const { walletType, impersonatedAddress, wrapWallet } = storage;
-    initSorbetDOMObjectWithProperties(
-      extensionBaseURL,
-      wrapWallet,
-      impersonatedAddress,
-      walletType,
-      true
-    );
-  }
+  const [initError, setInitError] = useState<string>();
+
   useEffect(() => {
-    loadP2PWalletDom();
-    chrome.runtime.onMessage.addListener(handleMessage);
-    function handleMessage(
-      request: any,
-      sender: chrome.runtime.MessageSender,
-      sendResponse: (response?: any) => void
-    ) {
-      if (request.action === "p2p_popup_exists") {
-        Log.App.Message("p2p_popup: handleMessage p2p_popup_exists", request);
+    let cancelled = false;
+    loadSettings(WALLET_INJECTION_KEYS)
+      .then(({ walletType, wrapWallet, overrideWallet }) => {
+        if (cancelled) return;
+        const installed = initSorbetWallet(
+          { walletType, wrapWallet, overrideWallet, extensionBaseURL: chrome.runtime.getURL("") },
+          { p2p: true, transport: runtimeTransport }
+        );
+        if (!installed) {
+          setInitError("The Sorbet wallet could not be installed in this window.");
+        }
+      })
+      .catch((e) => {
+        Log.E("p2p_popup: failed to initialize the wallet", e);
+        if (!cancelled) setInitError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleMessage = (
+      request: unknown,
+      _sender: chrome.runtime.MessageSender,
+      sendResponse: (response?: unknown) => void
+    ) => {
+      if (
+        typeof request === "object" &&
+        request !== null &&
+        "action" in request &&
+        request.action === PageMessageAction.P2P_POPUP_EXISTS
+      ) {
         sendResponse({ popupWindowExists: true });
       }
-    }
+    };
+    chrome.runtime.onMessage.addListener(handleMessage);
+    return () => chrome.runtime.onMessage.removeListener(handleMessage);
   }, []);
 
   return (
     <ThemeProvider theme={sorbetTheme}>
       <CssBaseline />
+      {initError !== undefined && (
+        <Alert severity="error" sx={{ borderRadius: 0 }}>
+          {initError}
+        </Alert>
+      )}
       <P2PProvider>
         <P2PConnectComponent />
       </P2PProvider>

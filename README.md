@@ -25,6 +25,7 @@ Begin, Eternl, Nami, Typhon, Yoroi, Lace, Flint, Vespr
 
 ### Prerequisites
 - [Bun](https://bun.sh/) v1.0+
+- [Node.js](https://nodejs.org/) 22+ (`bun run test` runs jest under `node`)
 - Chrome, Brave, or Edge browser
 - [Blockfrost API key](https://blockfrost.io/) (free tier available)
 
@@ -57,6 +58,10 @@ bun run build
 # Watch mode with hot reload
 bun run watch
 
+# Type-check and run the tests (CI runs both, plus the build)
+bun run typecheck
+bun run test
+
 # Format code
 bun run style
 
@@ -69,7 +74,10 @@ bun run build
 ### Impersonate Mode
 1. Select **Impersonate** mode
 2. Paste any Cardano address or ADA handle (`$handle`)
-3. The address will appear as a connected CIP-30 wallet to dApps
+3. The address will appear as a connected CIP-30 wallet to dApps. The first time a site calls
+   `enable()`, Sorbet opens an approval window; approved sites are listed (and can be removed)
+   under **Settings → Connected sites**. Sites that are not connected cannot read the address,
+   balance or UTxOs.
 
 ### Wrap Mode
 1. Select **Wrap** mode
@@ -88,11 +96,16 @@ dApps can integrate programmatically:
 
 ```javascript
 // Set the impersonated address
-window.cardano.sorbet.setAddress("addr1...")
+await window.cardano.sorbet.setAddress("addr1...")
 
 // Add to contacts
-window.cardano.sorbet.addToAddressBook("addr1...")
+await window.cardano.sorbet.addToAddressBook("addr1...")
 ```
+
+Each call opens an approval window showing the address, unless you chose **Always allow this site**
+for that site earlier. Both return a Promise that rejects when the address is not a valid Shelley
+payment address or when the request is denied. Setting or saving an address from Sorbet's in-page
+address menu (your own click) needs no approval.
 
 ## Tech Stack
 

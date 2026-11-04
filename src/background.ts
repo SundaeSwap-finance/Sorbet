@@ -1,205 +1,78 @@
-import { STORE_WALLET_LOG_ACTION } from "./modules/walletLog";
-import { processWalletLogRequest } from "./modules/walletLogStorageHandler";
-import { EWalletType } from "./types";
-import { stakeKeyFromAddress } from "./utils/addresses";
-import { assetsToEncodedBalance, computeBalanceFromAmounts } from "./utils/balance";
+import type { TPaginate } from "../typings/cip30";
+import { appendWalletLog } from "./modules/walletLogStorageHandler";
+import { addAddress } from "./modules/addressBookStorage";
+import { getSitePermission, grantSitePermission, siteOrigin } from "./modules/sitePermissions";
+import { RefusedError, decideApproval, getApproval, requestApproval } from "./background/approvals";
+import {
+  AnyBackgroundRequest,
+  ApprovalKind,
+  BackgroundAction,
+  BackgroundReply,
+  BackgroundResponseData,
+  WalletConfigReply,
+  isBackgroundRequest,
+} from "./protocol";
+import { WALLET_INJECTION_KEYS, loadSettings, saveSettings } from "./settings";
+import { Quantity, UTxO } from "./types";
+import { isValidAddress, networkIdFromAddress, stakeKeyFromAddress } from "./utils/addresses";
+import { computeBalanceFromAmounts } from "./utils/balance";
 import { Log } from "./utils/log_util";
-import { CustomResponseStorageKeys, getFromStorage } from "./utils/storage";
-import { MultiAssetAmount, encodeUtxos } from "./utils/utxo";
-
-interface Asset {
-  unit: string;
-  amount: string;
-}
-
-export interface Quantity {
-  unit: string;
-  quantity: string;
-}
-
-// --- In-memory config caches (populated on first use, invalidated via onChanged) ---
-let cachedBlockfrostKeys: {
-  blockfrostApiKey: string | undefined;
-  blockfrostMainnetApiKey: string;
-  blockfrostPreviewApiKey: string;
-} | null = null;
-
-let cachedWalletConfig: {
-  walletType: string;
-  impersonatedAddress: string;
-  wrapWallet: string;
-} | null = null;
-
-async function getBlockfrostKeys() {
-  if (cachedBlockfrostKeys) return cachedBlockfrostKeys;
-  const keys = await getFromStorage({
-    blockfrostApiKey: undefined,
-    blockfrostMainnetApiKey: "",
-    blockfrostPreviewApiKey: "",
-  });
-  cachedBlockfrostKeys = {
-    blockfrostApiKey: keys.blockfrostApiKey,
-    blockfrostMainnetApiKey: keys.blockfrostMainnetApiKey,
-    blockfrostPreviewApiKey: keys.blockfrostPreviewApiKey,
-  };
-  return cachedBlockfrostKeys;
-}
-
-async function getWalletConfig() {
-  if (cachedWalletConfig) return cachedWalletConfig;
-  const { walletType, impersonatedAddress, wrapWallet } = await getFromStorage([
-    "wrapWallet",
-    "impersonatedAddress",
-    "walletType",
-  ]);
-  cachedWalletConfig = {
-    walletType: walletType ?? EWalletType.IMPERSONATE,
-    impersonatedAddress: impersonatedAddress ?? "",
-    wrapWallet: wrapWallet ?? "",
-  };
-  return cachedWalletConfig;
-}
-
-// Invalidate in-memory caches when storage changes.
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== "sync") return;
-  if (
-    "blockfrostApiKey" in changes ||
-    "blockfrostMainnetApiKey" in changes ||
-    "blockfrostPreviewApiKey" in changes
-  ) {
-    cachedBlockfrostKeys = null;
-  }
-  if ("walletType" in changes || "impersonatedAddress" in changes || "wrapWallet" in changes) {
-    cachedWalletConfig = null;
-  }
-});
-
-// --- Cache with TTL ---
-const CACHE_TTL_MS = 30_000; // 30 seconds
-
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
-
-function getCached<T>(entry: CacheEntry<T> | undefined): T | null {
-  if (!entry) return null;
-  if (Date.now() - entry.timestamp > CACHE_TTL_MS) return null;
-  return entry.data;
-}
-
-function setCache<T>(data: T): CacheEntry<T> {
-  return { data, timestamp: Date.now() };
-}
-
-const blockfrostCache: {
-  usedAddresses: Record<string, CacheEntry<string[]>>;
-  rawUtxos: Record<string, CacheEntry<any[]>>;
-  balance: Record<string, CacheEntry<any>>;
-  utxos: Record<string, CacheEntry<any[]>>;
-} = {
-  usedAddresses: {},
-  rawUtxos: {},
-  balance: {},
-  utxos: {},
-};
-
-function clearCacheForAddress(address: string) {
-  delete blockfrostCache.usedAddresses[address];
-  delete blockfrostCache.rawUtxos[address];
-  delete blockfrostCache.balance[address];
-  delete blockfrostCache.utxos[address];
-}
-
-// --- Session storage persistence (survives SW idle restarts) ---
-const SESSION_CACHE_KEY = "sorbet_blockfrost_cache";
-
-async function persistCacheToSession() {
-  try {
-    await chrome.storage.session.set({ [SESSION_CACHE_KEY]: blockfrostCache });
-  } catch {
-    // session storage may not be available in all contexts
-  }
-}
-
-async function restoreCacheFromSession() {
-  try {
-    const result = await chrome.storage.session.get(SESSION_CACHE_KEY);
-    const saved = result[SESSION_CACHE_KEY];
-    if (saved) {
-      Object.assign(blockfrostCache.usedAddresses, saved.usedAddresses);
-      Object.assign(blockfrostCache.rawUtxos, saved.rawUtxos);
-      Object.assign(blockfrostCache.balance, saved.balance);
-      Object.assign(blockfrostCache.utxos, saved.utxos);
-    }
-  } catch {
-    // session storage may not be available
-  }
-}
-
-// Restore cache on SW startup.
-restoreCacheFromSession();
-
-// --- In-flight deduplication ---
-const inFlightRequests: Record<string, Promise<any>> = {};
-
-async function getRawUtxos(mainnet: boolean, stakeKey: string, cacheKey: string): Promise<any[]> {
-  const cached = getCached(blockfrostCache.rawUtxos[cacheKey]);
-  if (cached) return cached;
-
-  const flightKey = `rawUtxos:${cacheKey}`;
-  if (flightKey in inFlightRequests) return inFlightRequests[flightKey];
-
-  const promise = getAllUtxos(mainnet, stakeKey)
-    .then((utxos) => {
-      blockfrostCache.rawUtxos[cacheKey] = setCache(utxos);
-      delete inFlightRequests[flightKey];
-      persistCacheToSession();
-      return utxos;
-    })
-    .catch((err) => {
-      delete inFlightRequests[flightKey];
-      throw err;
-    });
-
-  inFlightRequests[flightKey] = promise;
-  return promise;
-}
-
-// --- Message listener ---
-chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-  (async () => {
-    try {
-      // Fast path: ping is used to pre-warm the service worker.
-      if (request.action === "ping") {
-        sendResponse({ ok: true });
-        return;
-      }
-      const response = await handleRequest(request);
-      if (response) {
-        response.id = request.id;
-        sendResponse(response);
-      }
-    } catch (err) {
-      console.error("Sorbet: background handleRequest error:", err);
-      sendResponse({ id: request.id, error: String(err) });
-    }
-  })();
-  return true;
-});
+import { createSerialQueue, storageGet, storageSet } from "./utils/storage";
+import { encodeUtxos } from "./utils/utxo";
 
 // --- Blockfrost API with exponential backoff ---
+
 const MAX_RETRIES = 5;
+/** Blockfrost returns at most 100 items per page. */
+const BLOCKFROST_PAGE_SIZE = 100;
+/** At most this many Blockfrost fetches are in flight across the worker. */
+const MAX_CONCURRENT_FETCHES = 8;
 
-async function callBlockfrost<R = any>(
-  mainnet: Boolean,
+let fetchesInFlight = 0;
+const fetchWaiters: Array<() => void> = [];
+
+/** Run `task` once one of the shared fetch slots is free. */
+async function withFetchSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (fetchesInFlight >= MAX_CONCURRENT_FETCHES) {
+    // The releasing task hands its slot over, so the count stays at the maximum.
+    const { promise, resolve } = Promise.withResolvers<void>();
+    fetchWaiters.push(resolve);
+    await promise;
+  } else {
+    fetchesInFlight++;
+  }
+  try {
+    return await task();
+  } finally {
+    const next = fetchWaiters.shift();
+    if (next) next();
+    else fetchesInFlight--;
+  }
+}
+
+class BlockfrostError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "BlockfrostError";
+  }
+}
+
+async function blockfrostApiKey(mainnet: boolean): Promise<string> {
+  const keys = await loadSettings(["blockfrostMainnetApiKey", "blockfrostPreviewApiKey"]);
+  const key = mainnet ? keys.blockfrostMainnetApiKey : keys.blockfrostPreviewApiKey;
+  if (!key) {
+    throw new Error(`Blockfrost ${mainnet ? "mainnet" : "preview"} API key is not set`);
+  }
+  return key;
+}
+
+/** GET a Blockfrost endpoint and return its JSON body. Only 429 is retried. */
+async function callBlockfrost(
+  mainnet: boolean,
   path: string,
-  params: Record<string, string> = {},
-  retryCount: number = 0
-): Promise<R> {
-  const keys = await getBlockfrostKeys();
-
+  params: Record<string, string>,
+  retryCount = 0
+): Promise<unknown> {
   const blockfrostUrl = mainnet
     ? "https://cardano-mainnet.blockfrost.io"
     : "https://cardano-preview.blockfrost.io";
@@ -208,273 +81,466 @@ async function callBlockfrost<R = any>(
     requestUrl.searchParams.append(key, value);
   }
 
-  const headers: Record<string, string> = {};
-  headers.project_id = mainnet
-    ? keys.blockfrostApiKey ?? keys.blockfrostMainnetApiKey
-    : keys.blockfrostPreviewApiKey;
+  const headers = { project_id: await blockfrostApiKey(mainnet) };
+  const res = await withFetchSlot(() => fetch(requestUrl, { method: "GET", headers }));
 
-  const res = await fetch(requestUrl, { method: "GET", headers });
-
-  if (res.status === 429 || res.status === 409) {
+  if (res.status === 429) {
     if (retryCount >= MAX_RETRIES) {
-      throw new Error(`Blockfrost rate limit exceeded after ${MAX_RETRIES} retries for ${path}`);
+      throw new BlockfrostError(
+        429,
+        `Blockfrost rate limit exceeded after ${MAX_RETRIES} retries for ${path}`
+      );
     }
     const delay = Math.min(200 * Math.pow(2, retryCount), 5000);
     await new Promise((resolve) => setTimeout(resolve, delay));
     return callBlockfrost(mainnet, path, params, retryCount + 1);
   }
 
-  // 404 on an address/account endpoint means "never seen on-chain" — a genuine
-  // empty, NOT a failure. Return null so callers can treat it as empty without
-  // conflating it with a transient error. Transient errors must keep throwing
-  // (below) so they propagate and get retried, rather than silently becoming a
-  // zero balance that then poisons the 30s cache.
-  if (res.status === 404) {
-    return null as R;
-  }
-
   if (!res.ok) {
     const body = await res.text();
-    console.error(`Sorbet: Blockfrost ${res.status} for ${path}:`, body);
-    throw new Error(`Blockfrost API error ${res.status}: ${body}`);
+    throw new BlockfrostError(res.status, `Blockfrost API error ${res.status} for ${path}: ${body}`);
   }
 
   return res.json();
 }
 
-// --- Request handler ---
-async function handleRequest(request: any) {
+/**
+ * Fetch one page of a list endpoint keyed by an address or account. For these endpoints a
+ * 404 means "never seen on-chain", i.e. a genuinely empty list; every other failure throws.
+ */
+async function fetchListPage(
+  mainnet: boolean,
+  path: string,
+  page: number
+): Promise<unknown[]> {
+  let body: unknown;
+  try {
+    body = await callBlockfrost(mainnet, path, {
+      count: BLOCKFROST_PAGE_SIZE.toString(),
+      page: page.toString(),
+    });
+  } catch (err) {
+    if (err instanceof BlockfrostError && err.status === 404) return [];
+    throw err;
+  }
+  if (!Array.isArray(body)) throw new Error(`Blockfrost returned a non-list body for ${path}`);
+  return body;
+}
+
+/** Fetch pages until one comes back short; later pages are only requested after a full page. */
+async function fetchAllPages(mainnet: boolean, path: string): Promise<unknown[]> {
+  const items: unknown[] = [];
+  for (let page = 1; ; page++) {
+    const pageItems = await fetchListPage(mainnet, path, page);
+    items.push(...pageItems);
+    if (pageItems.length < BLOCKFROST_PAGE_SIZE) return items;
+  }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+function parseQuantity(value: unknown): Quantity {
+  if (!isRecord(value) || typeof value.unit !== "string" || typeof value.quantity !== "string") {
+    throw new Error("Malformed Blockfrost amount");
+  }
+  return { unit: value.unit, quantity: value.quantity };
+}
+
+/** Parse the untrusted JSON of a Blockfrost UTxO into the exact UTxO type. */
+function parseUtxo(value: unknown): UTxO {
+  if (
+    !isRecord(value) ||
+    typeof value.address !== "string" ||
+    typeof value.tx_hash !== "string" ||
+    typeof value.output_index !== "number" ||
+    !Array.isArray(value.amount)
+  ) {
+    throw new Error("Malformed Blockfrost UTxO");
+  }
+  return {
+    address: value.address,
+    tx_hash: value.tx_hash,
+    output_index: value.output_index,
+    amount: value.amount.map(parseQuantity),
+  };
+}
+
+const parseUtxos = (value: unknown): UTxO[] => {
+  if (!Array.isArray(value)) throw new Error("Malformed UTxO list");
+  return value.map(parseUtxo);
+};
+
+const parseAddressList = (value: unknown): string[] => {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error("Malformed address list");
+  }
+  return value as string[];
+};
+
+async function fetchUtxosForAddress(mainnet: boolean, address: string): Promise<UTxO[]> {
+  return parseUtxos(await fetchAllPages(mainnet, `/api/v0/addresses/${address}/utxos`));
+}
+
+/** Every address of the account's stake key (all pages). */
+async function fetchAccountAddresses(mainnet: boolean, stakeKey: string): Promise<string[]> {
+  const items = await fetchAllPages(mainnet, `/api/v0/accounts/${stakeKey}/addresses`);
+  return items.map((item) => {
+    if (!isRecord(item) || typeof item.address !== "string") {
+      throw new Error("Malformed Blockfrost account address");
+    }
+    return item.address;
+  });
+}
+
+/**
+ * The chain scope of an impersonated address: its stake account when it has one, otherwise
+ * (enterprise/pointer addresses) the single address itself.
+ */
+function accountScope(address: string): { mainnet: boolean; stakeKey: string | null } {
+  const network = networkIdFromAddress(address);
+  if (network === null) throw new Error(`Cannot determine the network of ${address}`);
+  return { mainnet: network === 1, stakeKey: stakeKeyFromAddress(address) };
+}
+
+async function loadUsedAddresses(address: string): Promise<string[]> {
+  const { mainnet, stakeKey } = accountScope(address);
+  return stakeKey === null ? [address] : fetchAccountAddresses(mainnet, stakeKey);
+}
+
+async function loadUtxos(address: string): Promise<UTxO[]> {
+  const { mainnet, stakeKey } = accountScope(address);
+  if (stakeKey === null) return fetchUtxosForAddress(mainnet, address);
+  const addresses = await fetchAccountAddresses(mainnet, stakeKey);
+  const perAddress = await Promise.all(addresses.map((a) => fetchUtxosForAddress(mainnet, a)));
+  return perAddress.flat();
+}
+
+// --- Cache with TTL ---
+
+const CACHE_TTL_MS = 30_000;
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const isFresh = (entry: CacheEntry<unknown>, now = Date.now()) => now - entry.timestamp <= CACHE_TTL_MS;
+
+/**
+ * TTL cache keyed by impersonated address. Only successful loads are stored, concurrent
+ * loads of one key share a promise, and a load that was invalidated while in flight is
+ * not stored.
+ */
+class AddressCache<T> {
+  readonly entries = new Map<string, CacheEntry<T>>();
+  private inFlight = new Map<string, Promise<T>>();
+  private generation = 0;
+
+  constructor(private readonly onStored: () => Promise<void>) {}
+
+  async get(address: string, load: () => Promise<T>): Promise<T> {
+    const entry = this.entries.get(address);
+    if (entry && isFresh(entry)) return entry.data;
+    this.entries.delete(address);
+
+    const pending = this.inFlight.get(address);
+    if (pending) return pending;
+
+    const generation = this.generation;
+    const promise = (async () => {
+      const data = await load();
+      if (generation === this.generation) {
+        this.entries.set(address, { data, timestamp: Date.now() });
+        await this.onStored();
+      }
+      return data;
+    })().finally(() => {
+      if (this.inFlight.get(address) === promise) this.inFlight.delete(address);
+    });
+    this.inFlight.set(address, promise);
+    return promise;
+  }
+
+  delete(address: string): void {
+    this.entries.delete(address);
+    this.inFlight.delete(address);
+    this.generation++;
+  }
+}
+
+// --- Session storage persistence (survives service-worker idle restarts) ---
+
+const SESSION_CACHE_KEY = "sorbet_blockfrost_cache";
+const persistQueue = createSerialQueue();
+
+const freshEntries = <T>(cache: AddressCache<T>): Record<string, CacheEntry<T>> => {
+  const now = Date.now();
+  for (const [address, entry] of cache.entries) {
+    if (!isFresh(entry, now)) cache.entries.delete(address);
+  }
+  return Object.fromEntries(cache.entries);
+};
+
+/** Persist the caches. Serialized so snapshots reach storage in order; best effort. */
+function persistCaches(): Promise<void> {
+  return persistQueue(async () => {
+    try {
+      await storageSet("session", {
+        [SESSION_CACHE_KEY]: {
+          usedAddresses: freshEntries(usedAddressesCache),
+          utxos: freshEntries(utxosCache),
+        },
+      });
+    } catch (err) {
+      Log.W("Sorbet: could not persist the Blockfrost cache", err);
+    }
+  });
+}
+
+const usedAddressesCache = new AddressCache<string[]>(persistCaches);
+const utxosCache = new AddressCache<UTxO[]>(persistCaches);
+
+function restoreEntries<T>(
+  cache: AddressCache<T>,
+  saved: unknown,
+  parse: (data: unknown) => T
+): void {
+  if (!isRecord(saved)) return;
+  for (const [address, entry] of Object.entries(saved)) {
+    if (!isRecord(entry) || typeof entry.timestamp !== "number") continue;
+    const restored = { data: parse(entry.data), timestamp: entry.timestamp };
+    if (isFresh(restored)) cache.entries.set(address, restored);
+  }
+}
+
+async function restoreCaches(): Promise<void> {
+  try {
+    const saved = (await storageGet("session", [SESSION_CACHE_KEY]))[SESSION_CACHE_KEY];
+    if (!isRecord(saved)) return;
+    restoreEntries(usedAddressesCache, saved.usedAddresses, parseAddressList);
+    restoreEntries(utxosCache, saved.utxos, parseUtxos);
+  } catch (err) {
+    Log.W("Sorbet: could not restore the Blockfrost cache", err);
+  }
+}
+
+/** Every request awaits this, so no request reads or writes the caches before the restore. */
+const cachesRestored = restoreCaches();
+
+function clearCachesForAddress(address: string): Promise<void> {
+  usedAddressesCache.delete(address);
+  utxosCache.delete(address);
+  return persistCaches();
+}
+
+// --- Request handling ---
+
+const NO_ADDRESS_ERROR = "No impersonated address set";
+
+function paginateItems<T>(items: T[], paginate: TPaginate | undefined): T[] {
+  if (!paginate) return items;
+  const { page, limit } = paginate;
+  if (!Number.isInteger(page) || page < 0 || !Number.isInteger(limit) || limit < 1) {
+    throw new Error(`Invalid pagination: page ${page}, limit ${limit}`);
+  }
+  return items.slice(page * limit, (page + 1) * limit);
+}
+
+async function requireImpersonatedAddress(): Promise<string> {
+  const { impersonatedAddress } = await loadSettings(["impersonatedAddress"]);
+  if (!impersonatedAddress) throw new Error(NO_ADDRESS_ERROR);
+  return impersonatedAddress;
+}
+
+function requireValidAddress(address: string): void {
+  if (!isValidAddress(address)) throw new Error(`Invalid address: ${address}`);
+}
+
+/** Who sent a request, from the browser-provided MessageSender (pages cannot forge it). */
+type Caller = { kind: "extension" } | { kind: "web"; origin: string | null };
+
+/** D1: an extension page has our extension origin; everything else is a web page. */
+function classifySender(sender: chrome.runtime.MessageSender): Caller {
+  const extensionOrigin = `chrome-extension://${chrome.runtime.id}`;
+  if (sender.origin === extensionOrigin || sender.url?.startsWith(extensionOrigin + "/")) {
+    return { kind: "extension" };
+  }
+  return { kind: "web", origin: siteOrigin(sender.origin ?? sender.url) };
+}
+
+async function setImpersonatedAddress(address: string): Promise<{ address: string }> {
+  requireValidAddress(address);
+  const { impersonatedAddress: previous } = await loadSettings(["impersonatedAddress"]);
+  if (previous === address) return { address };
+  await saveSettings({ impersonatedAddress: address });
+  if (previous) await clearCachesForAddress(previous);
+  return { address };
+}
+
+/**
+ * Performs a request that is already authorized. `origin` is the site origin of a web page
+ * caller, or undefined for an extension page (or a request that needs no origin).
+ */
+async function handleRequest(
+  request: AnyBackgroundRequest,
+  origin: string | undefined
+): Promise<BackgroundResponseData[BackgroundAction]> {
   Log.App.Message("handleRequest", request);
+  await cachesRestored;
   switch (request.action) {
-    case "p2p_popup_exists": {
-      return false;
+    case BackgroundAction.PING:
+    case BackgroundAction.REQUEST_CONNECT:
+      return null;
+    case BackgroundAction.IS_CONNECTED:
+      return true;
+    case BackgroundAction.ADD_TO_ADDRESS_BOOK:
+    case BackgroundAction.CONTEXT_MENU_ADD_TO_ADDRESS_BOOK: {
+      requireValidAddress(request.address);
+      await addAddress(request.address);
+      return { address: request.address };
     }
-    case "addToAddressBook": {
-      console.log("Sorbet: adding to address book");
-      const { address } = request;
-      chrome.storage.sync.get(["addressBook"], function (result) {
-        const addressBook =
-          result.addressBook && Array.isArray(result.addressBook) ? result.addressBook : [];
-        if (addressBook.find((abe: any) => abe.address === address)) return;
-        const newAddressBook = [...addressBook, { address }];
-        chrome.storage.sync.set({ addressBook: newAddressBook }, function () {
-          console.log("Sorbet: address added to address book:", address);
-        });
-      });
-      return { address };
+    case BackgroundAction.SET_ADDRESS:
+    case BackgroundAction.CONTEXT_MENU_SET_ADDRESS:
+      return setImpersonatedAddress(request.address);
+    case BackgroundAction.QUERY_INJECTION_CONFIG:
+      return loadSettings(WALLET_INJECTION_KEYS);
+    case BackgroundAction.APPROVAL_GET:
+      return getApproval(request.approvalId);
+    case BackgroundAction.APPROVAL_DECIDE:
+      decideApproval(request.approvalId, request.decision);
+      return null;
+    case BackgroundAction.STORE_WALLET_LOG: {
+      // The origin comes from the sender, never from the page-supplied payload.
+      await appendWalletLog({ ...request.payload, origin });
+      return null;
     }
-    case "setAddress": {
-      const { address } = request;
-      // Clear stale cache when address changes
-      const config = await getWalletConfig();
-      if (config.impersonatedAddress && config.impersonatedAddress !== address) {
-        clearCacheForAddress(config.impersonatedAddress);
-      }
-      // Invalidate the in-memory wallet config so the next read picks up the new address.
-      cachedWalletConfig = null;
-      chrome.storage.sync.set({ impersonatedAddress: address }, function () {
-        console.log("Sorbet: wallet address updated:", address);
-      });
-      return { address };
-    }
-    case STORE_WALLET_LOG_ACTION: {
-      return processWalletLogRequest(request);
-    }
-    case "query_shouldScanForAddresses": {
-      const { shouldScanForAddresses } = await getFromStorage(["shouldScanForAddresses"]);
-      return { shouldScanForAddresses };
-    }
-    case "query_walletConfig": {
-      const config = await getWalletConfig();
-      const network = config.impersonatedAddress?.startsWith("addr_test") ? 0 : 1;
-      return {
-        walletType: config.walletType,
-        wrapWallet: config.wrapWallet,
-        impersonatedAddress: config.impersonatedAddress,
-        network,
+    case BackgroundAction.QUERY_WALLET_CONFIG: {
+      const { impersonatedAddress } = await loadSettings(["impersonatedAddress"]);
+      const reply: WalletConfigReply = {
+        impersonatedAddress,
+        network: impersonatedAddress ? networkIdFromAddress(impersonatedAddress) : null,
       };
+      return reply;
     }
-    case "request_getUsedAddresses": {
-      const config = await getWalletConfig();
-      const impersonatedAddress = config.impersonatedAddress;
-      if (!impersonatedAddress) {
-        return { error: "No impersonated address set" };
-      }
-
-      const cached = getCached(blockfrostCache.usedAddresses[impersonatedAddress]);
-      if (cached) {
-        return { addresses: cached };
-      }
-
-      const stakeKey = stakeKeyFromAddress(impersonatedAddress);
-      const addrs = await callBlockfrost(
-        !impersonatedAddress?.startsWith("addr_test"),
-        `/api/v0/accounts/${stakeKey}/addresses`,
-        {
-          count: (request?.paginate?.limit ?? 100).toString(),
-          page: (request?.paginate?.page ?? 1).toString(),
-        }
-      );
-      const addresses =
-        addrs?.map(({ address }: { address: string }) => {
-          return address;
-        }) ?? [];
-      blockfrostCache.usedAddresses[impersonatedAddress] = setCache(addresses);
-      persistCacheToSession();
-      return {
-        id: request.id,
-        addresses,
-      };
+    case BackgroundAction.GET_USED_ADDRESSES: {
+      const address = await requireImpersonatedAddress();
+      const addresses = await usedAddressesCache.get(address, () => loadUsedAddresses(address));
+      return paginateItems(addresses, request.paginate);
     }
-    case "request_getCollateral": {
-      return {
-        collateral: null,
-      };
+    case BackgroundAction.GET_COLLATERAL:
+      return null;
+    case BackgroundAction.GET_BALANCE: {
+      const settings = await loadSettings(["impersonatedAddress", "customResponseEnabled", "mockUtxos"]);
+      if (!settings.impersonatedAddress) throw new Error(NO_ADDRESS_ERROR);
+      if (settings.customResponseEnabled) {
+        Log.D("returning custom response from getBalance()", { mockUtxos: settings.mockUtxos });
+        return computeBalanceFromAmounts(settings.mockUtxos);
+      }
+      const address = settings.impersonatedAddress;
+      return computeBalanceFromAmounts(await utxosCache.get(address, () => loadUtxos(address)));
     }
-    case "request_getBalance": {
-      const storage = await getFromStorage({
-        impersonatedAddress: "",
-        [CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED]: false,
-        [CustomResponseStorageKeys.MOCK_UTXOS]: [],
-      });
-      const { impersonatedAddress } = storage;
-      const isCustomResponseEnabled = storage[CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED];
-      const mockUtxos = storage[CustomResponseStorageKeys.MOCK_UTXOS];
-
-      if (!impersonatedAddress) {
-        return { error: "No impersonated address set" };
+    case BackgroundAction.GET_UTXOS: {
+      const settings = await loadSettings(["impersonatedAddress", "customResponseEnabled", "mockUtxos"]);
+      if (!settings.impersonatedAddress) throw new Error(NO_ADDRESS_ERROR);
+      if (settings.customResponseEnabled) {
+        Log.D("Returning custom UTxO response", settings.mockUtxos);
+        return encodeUtxos(paginateItems(settings.mockUtxos, request.paginate));
       }
-
-      let utxos: { amount: Quantity[] }[];
-      if (isCustomResponseEnabled) {
-        utxos = mockUtxos;
-        Log.D("returning custom response from getBalance()", { mockUtxos });
-      } else {
-        const cachedBalance = getCached(blockfrostCache.balance[impersonatedAddress]);
-        if (cachedBalance) {
-          return { balance: cachedBalance };
-        }
-
-        const mainnet = !impersonatedAddress?.startsWith("addr_test");
-        const stakeKey = stakeKeyFromAddress(impersonatedAddress);
-        utxos = await getRawUtxos(mainnet, stakeKey, impersonatedAddress);
-      }
-
-      const balance = computeBalanceFromAmounts(utxos);
-      if (!isCustomResponseEnabled) {
-        blockfrostCache.balance[impersonatedAddress] = setCache(balance);
-        persistCacheToSession();
-      }
-      return {
-        balance,
-      };
+      const address = settings.impersonatedAddress;
+      const utxos = await utxosCache.get(address, () => loadUtxos(address));
+      return encodeUtxos(paginateItems(utxos, request.paginate));
     }
-
-    case "request_getUTXOs": {
-      const storage = await getFromStorage({
-        impersonatedAddress: "",
-        [CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED]: false,
-        [CustomResponseStorageKeys.MOCK_UTXOS]: [],
-      });
-      const { impersonatedAddress } = storage;
-      const isCustomResponseEnabled = storage[CustomResponseStorageKeys.CUSTOM_RESPONSE_ENABLED];
-      const mockUtxos = storage[CustomResponseStorageKeys.MOCK_UTXOS];
-      if (!impersonatedAddress) {
-        return { error: "No impersonated address set" };
-      }
-      if (isCustomResponseEnabled) {
-        Log.D("Returning custom UTxO response", mockUtxos);
-        return {
-          utxos: encodeUtxos(mockUtxos),
-        };
-      }
-
-      const cachedUtxos = getCached(blockfrostCache.utxos[impersonatedAddress]);
-      if (cachedUtxos) {
-        return { utxos: cachedUtxos };
-      }
-
-      const mainnet = !impersonatedAddress?.startsWith("addr_test");
-      const stakeKey = stakeKeyFromAddress(impersonatedAddress);
-
-      const rawUtxos = await getRawUtxos(mainnet, stakeKey, impersonatedAddress);
-      const utxos = rawUtxos.flat();
-      const utxosWithAssets = encodeUtxos(utxos);
-
-      blockfrostCache.utxos[impersonatedAddress] = setCache(utxosWithAssets);
-      persistCacheToSession();
-      return {
-        utxos: utxosWithAssets,
-      };
-    }
-    default:
-      return { error: `Unrecognized action ${request.action}` };
   }
 }
 
-export interface AddressInfo {
-  address: string;
-  stake_address: string;
-  amount: Quantity[];
-  type: string;
-  script: boolean;
+function requireSiteOrigin(origin: string | null): string {
+  if (origin === null) throw new RefusedError("Requests from this page are not allowed");
+  return origin;
 }
 
-// Blockfrost returns 100 items per page by default.
-const BLOCKFROST_PAGE_SIZE = 100;
-const PARALLEL_PAGES = 3;
+async function requireConnected(origin: string | null): Promise<string> {
+  const site = requireSiteOrigin(origin);
+  if (!(await getSitePermission(site)).connect) throw new RefusedError(`${site} is not connected to Sorbet`);
+  return site;
+}
 
-async function getUtxosForAddress(mainnet: boolean, address: string): Promise<any[]> {
-  const utxos: any[] = [];
-  let page = 1;
+/** setAddress / addToAddressBook from a web page: stored permission, else one approval. */
+async function authorizeHook(origin: string | null, kind: ApprovalKind, address: string): Promise<void> {
+  const site = requireSiteOrigin(origin);
+  requireValidAddress(address);
+  if ((await getSitePermission(site)).hooks) return;
+  const decision = await requestApproval(site, kind, address);
+  if (decision === "deny") throw new RefusedError(`The request from ${site} was denied`);
+  if (decision === "allow_always") await grantSitePermission(site, "hooks");
+}
 
-  // Speculative parallel fetch: request PARALLEL_PAGES pages at once.
-  // NOTE: we deliberately do NOT swallow page errors. callBlockfrost returns
-  // null for a 404 (a genuine empty page, past the last page or an unused
-  // address); any other failure (429 after retries, 5xx, network) throws and
-  // must propagate so the caller can retry — silently coercing it to [] here
-  // would undercount or zero the balance and then cache that wrong result.
-  while (true) {
-    const pageNumbers = Array.from({ length: PARALLEL_PAGES }, (_, i) => page + i);
-    const pageResults = await Promise.all(
-      pageNumbers.map((p) =>
-        callBlockfrost<any[] | null>(mainnet, `/api/v0/addresses/${address}/utxos`, {
-          page: p.toString(),
-        })
-      )
-    );
-
-    let lastNonEmpty = -1;
-    for (let i = 0; i < pageResults.length; i++) {
-      const data = pageResults[i];
-      if (data && data.length > 0) {
-        utxos.push(...data);
-        lastNonEmpty = i;
-      }
+/**
+ * The single permission gate (D1/D2): extension pages are never gated; web pages pass only
+ * the rules below. Every request is authorized here before handleRequest performs it.
+ */
+async function dispatch(
+  request: AnyBackgroundRequest,
+  caller: Caller
+): Promise<BackgroundResponseData[BackgroundAction]> {
+  if (caller.kind === "extension") return handleRequest(request, undefined);
+  const { origin } = caller;
+  switch (request.action) {
+    case BackgroundAction.PING:
+    case BackgroundAction.QUERY_INJECTION_CONFIG:
+    case BackgroundAction.CONTEXT_MENU_SET_ADDRESS:
+    case BackgroundAction.CONTEXT_MENU_ADD_TO_ADDRESS_BOOK:
+      return handleRequest(request, undefined);
+    case BackgroundAction.IS_CONNECTED:
+      return origin !== null && (await getSitePermission(origin)).connect;
+    case BackgroundAction.REQUEST_CONNECT: {
+      const site = requireSiteOrigin(origin);
+      if ((await getSitePermission(site)).connect) return null;
+      const decision = await requestApproval(site, "connect");
+      if (decision !== "allow_always") throw new RefusedError(`The connection request from ${site} was denied`);
+      await grantSitePermission(site, "connect");
+      return null;
     }
-
-    // If no pages returned data, or the last non-empty page was not full, we're done.
-    if (lastNonEmpty === -1) break;
-    const lastPage = pageResults[lastNonEmpty];
-    if (!lastPage || lastPage.length < BLOCKFROST_PAGE_SIZE) break;
-
-    page += PARALLEL_PAGES;
+    case BackgroundAction.QUERY_WALLET_CONFIG:
+    case BackgroundAction.GET_USED_ADDRESSES:
+    case BackgroundAction.GET_COLLATERAL:
+    case BackgroundAction.GET_BALANCE:
+    case BackgroundAction.GET_UTXOS:
+    case BackgroundAction.STORE_WALLET_LOG:
+      return handleRequest(request, await requireConnected(origin));
+    case BackgroundAction.SET_ADDRESS:
+      await authorizeHook(origin, "setAddress", request.address);
+      return handleRequest(request, undefined);
+    case BackgroundAction.ADD_TO_ADDRESS_BOOK:
+      await authorizeHook(origin, "addToAddressBook", request.address);
+      return handleRequest(request, undefined);
+    case BackgroundAction.APPROVAL_GET:
+    case BackgroundAction.APPROVAL_DECIDE:
+      throw new RefusedError("Approvals can only be answered from Sorbet");
   }
-  return utxos;
 }
 
-async function getAllUtxos(mainnet: boolean, stakeKey: string): Promise<any[]> {
-  const addresses = await callBlockfrost<{ address: string }[]>(
-    mainnet,
-    `/api/v0/accounts/${stakeKey}/addresses`
-  );
-
-  if (!addresses?.length) {
-    return [];
+async function reply(request: AnyBackgroundRequest, sender: chrome.runtime.MessageSender): Promise<BackgroundReply> {
+  try {
+    return { id: request.id, ok: true, data: await dispatch(request, classifySender(sender)) };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    if (err instanceof RefusedError) return { id: request.id, ok: false, error, refused: true };
+    console.error("Sorbet: background request failed:", err);
+    return { id: request.id, ok: false, error };
   }
+}
 
-  const results = await Promise.all(
-    addresses.map(({ address }) => getUtxosForAddress(mainnet, address))
-  );
-  return results.flat();
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Anything else (e.g. p2p_popup_exists) is answered by another context.
+  if (!isBackgroundRequest(message)) return false;
+  void reply(message, sender).then(sendResponse);
+  return true;
+});
+
+// D5: content scripts must not read storage (Blockfrost keys, P2P seeds).
+for (const area of ["sync", "local"] as const) {
+  chrome.storage[area].setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }).catch((err: unknown) => {
+    Log.W(`Sorbet: could not restrict chrome.storage.${area} to trusted contexts`, err);
+  });
 }

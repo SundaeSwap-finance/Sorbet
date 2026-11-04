@@ -4,210 +4,149 @@ import type {
   TExperimentalApi,
   TPaginate,
 } from "../../typings/cip30";
+import {
+  BackgroundAction,
+  BackgroundError,
+  BackgroundRequestParams,
+  BackgroundResponseData,
+  BackgroundTransport,
+  callBackground,
+} from "../protocol";
 import { bech32ToHex } from "../utils/addresses";
 import { assetsToEncodedBalance } from "../utils/balance";
-import {
-  sendMessageToBackground,
-  sendMessageToBackground as sendMessageToBackground_FromInjected,
-} from "../utils/sendMessageToBackground";
+import { Log } from "../utils/log_util";
 import { utxosToHexArray } from "../utils/utxo";
 import { walletInvoked } from "./walletLog";
-// import { Address } from "@dcspark/cardano-multiplatform-lib-browser";
-
-/**
- * allow communication with background thread from popups in the same signature as utils/sendMessageToBackground
- * @param message
- * @returns
- */
-async function sendMessageToBackground_FromPopup<R = any>(message: { action: string } & any) {
-  return await new Promise<R>((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      if (response) {
-        resolve(response);
-      } else {
-        reject();
-      }
-    });
-  });
-}
-
-// CIP-30 APIError codes. InternalError signals a recoverable wallet-side problem
-// (e.g. the user hasn't finished setting up the wallet) without crashing the dApp.
-const APIErrorCode = {
-  InvalidRequest: -1,
-  InternalError: -2,
-  Refused: -3,
-  AccountChange: -4,
-} as const;
-
-function throwAPIError(info: string, code: number = APIErrorCode.InternalError): never {
-  throw { code, info };
-}
+import { apiError, backgroundErrorToApiError } from "./apiError";
 
 export class ImpersonatedWallet implements TConnectedApi {
-  /*
-  public stakeKey: string;
-  public network: number;
-  public blockfrostUrl: string;
-  */
   public experimental?: TExperimentalApi | undefined;
 
-  private sendMessageToBackground: (message: { action: string } & any) => any;
-
-  constructor(isInjected: boolean) {
-    /** switch between to allow communication with background thread from popups */
-    this.sendMessageToBackground = isInjected
-      ? sendMessageToBackground_FromInjected
-      : sendMessageToBackground_FromPopup;
-
+  constructor(private readonly transport: BackgroundTransport) {
     // TODO: This is hard-coded to get dApps to work, since we don't need to actually sign valid transactions,
     // but it'd still be nice to emulate choosing a collateral UTXO from the wallet.
-    this.experimental = {
-      getCollateral: async () => {
-        const { collateral } = await sendMessageToBackground({
-          action: "request_getCollateral",
-        });
-        return collateral;
-      },
-    };
-    // Bind each of the methods to this, because shenanigans
-    this.getUsedAddresses = this.getUsedAddresses.bind(this);
-    this.getUnusedAddresses = this.getUnusedAddresses.bind(this);
-    this.getBalance = this.getBalance.bind(this);
-    this.getUtxos = this.getUtxos.bind(this);
-    this.signData = this.signData.bind(this);
-    this.signTx = this.signTx.bind(this);
-    this.submitTx = this.submitTx.bind(this);
-    this.getCollateral = this.getCollateral.bind(this);
-
-    /**
-     * @TODO Maybe figure out WASM bundling and use serialization if required.
-     */
-    // const serializedAddress = Address.from_bech32(address);
-    // // this.stakeKey = serializedAddress.staking_cred()?.to_keyhash()?.to_bech32("stake") ?? "";
-    // // this.network = serializedAddress.network_id();
+    this.experimental = { getCollateral: this.getCollateral };
   }
 
-  async getBalance(): Promise<string> {
-    const response = await this.sendMessageToBackground({
-      action: "request_getBalance",
-    });
-    if (response?.error) {
-      throwAPIError(response.error);
+  /** Every background request goes through here so failures surface as APIError -2. */
+  private call = async <A extends BackgroundAction>(
+    action: A,
+    params: BackgroundRequestParams[A]
+  ): Promise<BackgroundResponseData[A]> => {
+    try {
+      return await callBackground(this.transport, action, params);
+    } catch (error) {
+      if (error instanceof BackgroundError) {
+        throw backgroundErrorToApiError(error);
+      }
+      throw error;
     }
+  };
 
-    const { balance } = response;
-    walletInvoked("getBalance", [], balance);
-    const encoded = assetsToEncodedBalance(balance);
-    return encoded;
-  }
+  /** Runs a wallet method body; non-API failures (e.g. encoding errors) become APIError -2 too. */
+  private guard = async <T>(body: () => Promise<T>): Promise<T> => {
+    try {
+      return await body();
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && "info" in error) {
+        throw error;
+      }
+      throw apiError(error instanceof Error ? error.message : "Unknown wallet error");
+    }
+  };
 
-  async getChangeAddress(): Promise<string> {
-    const { impersonatedAddress } = await this.sendMessageToBackground({
-      action: "query_walletConfig",
-    });
+  private requireAddress = async (): Promise<string> => {
+    const { impersonatedAddress } = await this.call(BackgroundAction.QUERY_WALLET_CONFIG, {});
     if (!impersonatedAddress) {
-      throwAPIError("No impersonated address set");
+      throw apiError("No impersonated address set");
     }
-    walletInvoked("getChangeAddress", [], impersonatedAddress);
-    const impersonatedAddress_toHex = bech32ToHex(impersonatedAddress);
-    return impersonatedAddress_toHex;
-  }
+    return impersonatedAddress;
+  };
+
+  getBalance = (): Promise<string> =>
+    this.guard(async () => {
+      const balance = await this.call(BackgroundAction.GET_BALANCE, {});
+      const encoded = assetsToEncodedBalance(balance);
+      walletInvoked(this.transport, "getBalance", [], encoded);
+      return encoded;
+    });
+
+  getChangeAddress = (): Promise<string> =>
+    this.guard(async () => {
+      const hex = bech32ToHex(await this.requireAddress());
+      walletInvoked(this.transport, "getChangeAddress", [], hex);
+      return hex;
+    });
 
   // TODO: This is hard-coded to get dApps to work, since we don't need to actually sign valid transactions,
   // but it'd still be nice to emulate choosing a collateral UTXO from the wallet.
-  async getCollateral(params: { amount: string }): Promise<string[] | null> {
-    const { collateral } = await sendMessageToBackground({
-      action: "request_getCollateral",
-    });
-    return collateral;
-  }
+  getCollateral = (_params?: { amount: string }): Promise<string[] | null> =>
+    this.guard(() => this.call(BackgroundAction.GET_COLLATERAL, {}));
 
-  async getNetworkId(): Promise<number> {
-    const { network } = await this.sendMessageToBackground({
-      action: "query_walletConfig",
+  getNetworkId = (): Promise<number> =>
+    this.guard(async () => {
+      const { network } = await this.call(BackgroundAction.QUERY_WALLET_CONFIG, {});
+      if (network === null) {
+        throw apiError("No impersonated address set");
+      }
+      walletInvoked(this.transport, "getNetworkId", [], network);
+      return network;
     });
-    walletInvoked("getNetworkId", [], network);
-    return network;
-  }
 
   // TODO: This is hard-coded to get dApps to work, since we don't need to actually sign valid transactions,
   // but it'd still be nice to emulate choosing a collateral UTXO from the wallet.
-  async getRewardAddresses(): Promise<string[]> {
+  getRewardAddresses = async (): Promise<string[]> => {
     const rewardAddresses = ["e1c0ff5904e5d29c1d85ef193acbe0c6eb7cddbcf3a0d2a593e96931c4"];
-    walletInvoked("getRewardAddresses", [], rewardAddresses);
+    walletInvoked(this.transport, "getRewardAddresses", [], rewardAddresses);
     return rewardAddresses;
-  }
+  };
 
-  async getUnusedAddresses(paginate?: TPaginate | undefined): Promise<string[]> {
-    const { impersonatedAddress } = await this.sendMessageToBackground({
-      action: "query_walletConfig",
+  getUnusedAddresses = (paginate?: TPaginate): Promise<string[]> =>
+    this.guard(async () => {
+      const hexAddresses = [bech32ToHex(await this.requireAddress())];
+      walletInvoked(this.transport, "getUnusedAddresses", [paginate], hexAddresses);
+      return hexAddresses;
     });
-    if (!impersonatedAddress) {
-      throwAPIError("No impersonated address set");
-    }
-    walletInvoked("getUnusedAddresses", [paginate], impersonatedAddress);
-    const unusedAddresses = [bech32ToHex(impersonatedAddress)];
-    return unusedAddresses;
-  }
 
-  async getUsedAddresses(paginate?: TPaginate | undefined): Promise<string[]> {
-    const response = await this.sendMessageToBackground({
-      action: "request_getUsedAddresses",
-      paginate,
+  getUsedAddresses = (paginate?: TPaginate): Promise<string[]> =>
+    this.guard(async () => {
+      const addresses = await this.call(BackgroundAction.GET_USED_ADDRESSES, { paginate });
+      walletInvoked(this.transport, "getUsedAddresses", [paginate], addresses);
+      return addresses.map((addr) => bech32ToHex(addr));
     });
-    if (response?.error) {
-      throwAPIError(response.error);
-    }
 
-    const { addresses } = response;
-    walletInvoked("getUsedAddresses", [paginate], addresses);
-    const addresses_toHex = addresses?.map((addr: string) => bech32ToHex(addr));
-    return addresses_toHex;
-  }
-
-  async getUtxos(
-    amount?: string | undefined,
-    paginate?: TPaginate | undefined
-  ): Promise<string[] | null> {
-    const response = await this.sendMessageToBackground({
-      action: "request_getUTXOs",
+  getUtxos = (amount?: string, paginate?: TPaginate): Promise<string[] | null> =>
+    this.guard(async () => {
+      const utxos = await this.call(BackgroundAction.GET_UTXOS, { amount, paginate });
+      const encoded = utxosToHexArray(utxos);
+      walletInvoked(this.transport, "getUtxos", [amount, paginate], encoded);
+      return encoded;
     });
-    if (response?.error) {
-      throwAPIError(response.error);
-    }
-
-    const { utxos } = response;
-    walletInvoked("getUtxos", [amount, paginate], utxos);
-
-    const encodedUTXOs = utxosToHexArray(utxos);
-    return encodedUTXOs;
-  }
 
   // TODO: This is stubbed out, but it'd be nice to emulate something better here.
-  async signData(addr: string, payload: string): Promise<TDataSignature> {
+  signData = async (addr: string, payload: string): Promise<TDataSignature> => {
     const signedData: TDataSignature = {
       key: "",
       signature: "",
     };
-    walletInvoked("signData", [addr, payload], signedData);
+    walletInvoked(this.transport, "signData", [addr, payload], signedData);
     return signedData;
-  }
+  };
 
   // TODO: The response is hard-coded, but it'd be nice to emulate something nicer here.
-  async signTx(tx: string, partialSign?: boolean | undefined): Promise<string> {
-    console.log("Sorbet: asked to sign ", tx);
+  signTx = async (tx: string, partialSign?: boolean): Promise<string> => {
+    Log.D("Sorbet: asked to sign", tx);
     const signedTx =
       "a1008182582078b0eff557a5468f74ca5cc03a55ad3f9310568a037f9b295360b9e9316c953d5840ca48874aba63b221ab7ee77763ea7de003d06cade0d606b83f1563d9342bb4dbc252a174565c641f220baa90a436277a9d11ef7170f04303b089bb4013612802";
-    walletInvoked("signTx", [tx, partialSign], signedTx);
+    walletInvoked(this.transport, "signTx", [tx, partialSign], signedTx);
     return signedTx;
-  }
+  };
 
   // TODO: The response is hard-coded, but it'd be nice to emulate something nicer here.
-  async submitTx(tx: string): Promise<string> {
-    console.log("Sorbet: asked to submit ", tx);
+  submitTx = async (tx: string): Promise<string> => {
+    Log.D("Sorbet: asked to submit", tx);
     const submittedTx = "beefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef";
-    walletInvoked("submitTx", [tx], submittedTx);
+    walletInvoked(this.transport, "submitTx", [tx], submittedTx);
     return submittedTx;
-  }
+  };
 }

@@ -3,11 +3,15 @@ const path = require("path");
 const CopyPlugin = require("copy-webpack-plugin");
 const srcDir = path.join(__dirname, "..", "src");
 
+/** Extension pages that load js/vendor.js from their HTML. */
+const PAGE_ENTRIES = ["popup", "p2p_popup", "options", "log_devtool", "approve"];
+
 module.exports = {
   entry: {
     popup: path.join(srcDir, "popup.tsx"),
     p2p_popup: path.join(srcDir, "p2p_popup.tsx"),
     options: path.join(srcDir, "options.tsx"),
+    approve: path.join(srcDir, "approve.tsx"),
     background: path.join(srcDir, "background.ts"),
     content_script: path.join(srcDir, "content_script.ts"),
     injectedScript: path.join(srcDir, "injectedScript.ts"),
@@ -19,6 +23,19 @@ module.exports = {
     path: path.join(__dirname, "../dist/js"),
     filename: "[name].js",
     clean: true,
+  },
+  optimization: {
+    splitChunks: {
+      cacheGroups: {
+        vendor: {
+          test: /[\\/]node_modules[\\/]/,
+          name: "vendor",
+          chunks: (chunk) => PAGE_ENTRIES.includes(chunk.name),
+          priority: 10,
+          enforce: true,
+        },
+      },
+    },
   },
   experiments: {
     topLevelAwait: true,
@@ -59,7 +76,14 @@ module.exports = {
   },
   plugins: [
     new CopyPlugin({
-      patterns: [{ from: ".", to: "../", context: "public" }],
+      patterns: [
+        { from: ".", to: "../", context: "public" },
+        {
+          from: "inter-latin-{400,500,600,700}-normal.woff2",
+          to: "../fonts/",
+          context: path.join(__dirname, "..", "node_modules", "@fontsource", "inter", "files"),
+        },
+      ],
       options: {},
     }),
     new webpack.ProvidePlugin({

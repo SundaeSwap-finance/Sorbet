@@ -7,6 +7,7 @@ import {
   IWalletInfo,
   Paginate,
 } from "@fabianbormann/cardano-peer-connect/dist/src/types";
+import { runtimeTransport } from "../protocol";
 import { Log } from "../utils/log_util";
 import { ImpersonatedWallet } from "./ImpersonatedWallet.class";
 
@@ -47,7 +48,7 @@ export interface P2PConnection extends IConnectMessage {
 }
 
 export class SorbetPeerConnect extends CardanoPeerConnect {
-  private w = new ImpersonatedWallet(false);
+  private w = new ImpersonatedWallet(runtimeTransport);
 
   constructor(
     seed?: string,
@@ -70,59 +71,61 @@ export class SorbetPeerConnect extends CardanoPeerConnect {
     );
   }
 
-  private logP2PWalletMethod = () => {
-    const stack = new Error().stack,
-      caller = stack?.split("\n")[2].split("(")[0].trim();
-    Log.App.P2PConnect("PeerConnectClient - executing wrapped wallet method:", caller);
-  };
+  private logP2PWalletMethod(method: string) {
+    Log.App.P2PConnect("PeerConnectClient - executing wrapped wallet method:", method);
+  }
 
   protected getNetworkId(): Promise<number> {
-    this.logP2PWalletMethod();
+    this.logP2PWalletMethod("getNetworkId");
     return this.w.getNetworkId();
   }
   protected getUtxos(
     amount?: string | undefined,
     paginate?: Paginate | undefined
   ): Promise<string[] | null> {
-    this.logP2PWalletMethod();
-    return this.w.getUtxos();
+    this.logP2PWalletMethod("getUtxos");
+    return this.w.getUtxos(amount, paginate);
   }
   protected getCollateral(
     params?: { amount?: string | undefined } | undefined
   ): Promise<string[] | null> {
-    this.logP2PWalletMethod();
-    return this.w.getCollateral(params as { amount: string });
+    this.logP2PWalletMethod("getCollateral");
+    const amount = params?.amount;
+    if (amount === undefined) {
+      return Promise.reject(new Error("getCollateral requires an amount"));
+    }
+    return this.w.getCollateral({ amount });
   }
   protected async getBalance(): Promise<string> {
-    this.logP2PWalletMethod();
+    this.logP2PWalletMethod("getBalance");
     return this.w.getBalance();
   }
   protected getUsedAddresses(): Promise<string[]> {
-    this.logP2PWalletMethod();
+    this.logP2PWalletMethod("getUsedAddresses");
     return this.w.getUsedAddresses();
   }
   protected getUnusedAddresses(): Promise<string[]> {
-    this.logP2PWalletMethod();
+    this.logP2PWalletMethod("getUnusedAddresses");
     return this.w.getUnusedAddresses();
   }
   protected getChangeAddress(): Promise<string> {
-    this.logP2PWalletMethod();
+    this.logP2PWalletMethod("getChangeAddress");
     return this.w.getChangeAddress();
   }
   protected getRewardAddresses(): Promise<string[]> {
-    this.logP2PWalletMethod();
+    this.logP2PWalletMethod("getRewardAddresses");
     return this.w.getRewardAddresses();
   }
   protected signTx(tx: string, partialSign: boolean): Promise<string> {
-    this.logP2PWalletMethod();
+    this.logP2PWalletMethod("signTx");
     return this.w.signTx(tx, partialSign);
   }
   protected signData(addr: string, payload: string): Promise<Cip30DataSignature> {
-    this.logP2PWalletMethod();
+    this.logP2PWalletMethod("signData");
     return this.w.signData(addr, payload);
   }
   protected submitTx(tx: string): Promise<string> {
-    this.logP2PWalletMethod();
+    this.logP2PWalletMethod("submitTx");
     return this.w.submitTx(tx);
   }
 
@@ -130,8 +133,7 @@ export class SorbetPeerConnect extends CardanoPeerConnect {
     const peerConnect = new SorbetPeerConnect(seed);
     Log.App.P2PConnect(
       "Created New P2P Client",
-      seed ? `with Seed ${seed}` : "without Seed",
-      peerConnect
+      seed ? "with seed" : "without seed"
     );
 
     const logMessage = (func: string, connectMessage: IConnectMessage) =>

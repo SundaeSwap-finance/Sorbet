@@ -1,93 +1,103 @@
 import * as cbor from "cbor-web";
-import { Quantity } from "../background";
-import { MultiAssetAmount } from "./utxo";
+import { Quantity } from "../types";
 
-export function computeBalanceFromAmounts(addressInfos: { amount: Quantity[] }[]) {
-  const allData = addressInfos.map((ai) => separateAdaFromAssets(ai.amount));
-  // We fold all the asset data up into a single array.
-  const balance = foldAssets(allData);
+/**
+ * Quantities are u64 and can exceed Number's safe integer range, so they are
+ * decimal strings at rest (JSON-safe across the message boundary) and bigints
+ * only inside arithmetic and CBOR encoding.
+ */
+export interface MultiAssetAmount {
+  coin: string;
+  multi_assets?: { [policyId: string]: { [assetName: string]: string } };
+}
+
+export interface MultiAssetOut {
+  address: string;
+  tx_hash: string;
+  output_index: number;
+  amount: MultiAssetAmount;
+}
+
+const U64_MAX = 2n ** 64n - 1n;
+
+/** Parse a decimal u64 string; throws on anything else. */
+export function parseQuantity(value: string): bigint {
+  if (typeof value !== "string" || !/^[0-9]+$/.test(value)) {
+    throw new Error(`Invalid quantity: ${JSON.stringify(value)}`);
+  }
+  const parsed = BigInt(value);
+  if (parsed > U64_MAX) {
+    throw new Error(`Quantity exceeds u64: ${value}`);
+  }
+  return parsed;
+}
+
+export function computeBalanceFromAmounts(
+  addressInfos: { amount: Quantity[] }[]
+): MultiAssetAmount {
+  return foldAssets(addressInfos.map((ai) => separateAdaFromAssets(ai.amount)));
+}
+
+export function foldAssets(allData: { ada: Quantity[]; assets: Quantity[] }[]): MultiAssetAmount {
+  const coin = allData.reduce(
+    (total, { ada }) => ada.reduce((sum, { quantity }) => sum + parseQuantity(quantity), total),
+    0n
+  );
+  const multiAssets: { [policyId: string]: { [assetName: string]: string } } = {};
+  for (const { assets } of allData) {
+    for (const { unit, quantity } of assets) {
+      const policyId = unit.slice(0, 56);
+      const assetName = unit.slice(56);
+      const names = (multiAssets[policyId] ??= {});
+      names[assetName] = (parseQuantity(names[assetName] ?? "0") + parseQuantity(quantity)).toString();
+    }
+  }
+  const balance: MultiAssetAmount = { coin: coin.toString() };
+  if (Object.keys(multiAssets).length > 0) {
+    balance.multi_assets = multiAssets;
+  }
   return balance;
 }
 
-export function foldAssets(allData: { ada: Quantity[]; assets: Quantity[] }[]) {
-  // Accumulate in BigInt: lovelace and native-token quantities are u64 values
-  // that routinely exceed Number.MAX_SAFE_INTEGER (2^53). Summing them as
-  // Number silently loses precision and, for a token near u64-max, rounds up
-  // past u64 — producing CBOR the Cardano deserializer rejects. We keep the
-  // results as decimal strings so the balance stays JSON-serializable across
-  // the extension message boundary.
-  return allData.reduce((acc, { ada, assets }) => {
-    acc.coin = (
-      BigInt(acc.coin ?? 0) +
-      ada.reduce((total, { quantity }) => total + BigInt(quantity), 0n)
-    ).toString();
-
-    if (assets) {
-      if (!acc.multi_assets) {
-        acc.multi_assets = {};
-      }
-
-      assets.forEach(({ quantity, unit }) => {
-        if (!acc.multi_assets) {
-          acc.multi_assets = {};
-        }
-        let policyId = unit.slice(0, 56);
-        let tokenName = unit.slice(56);
-        if (acc.multi_assets[policyId] === undefined) {
-          acc.multi_assets[policyId] = {};
-        }
-        acc.multi_assets[policyId][tokenName] = (
-          BigInt(acc.multi_assets?.[policyId]?.[tokenName] ?? 0) + BigInt(quantity)
-        ).toString();
-      });
-    }
-
-    return acc;
-  }, {} as MultiAssetAmount<string>);
-}
-
-export function separateAdaFromAssets(amount?: Quantity[]): {
+export function separateAdaFromAssets(amount: Quantity[]): {
   ada: Quantity[];
   assets: Quantity[];
 } {
-  let ada: Quantity[] = [];
-  let assets: Quantity[] = [];
-
-  amount?.forEach((asset) => {
-    if (asset.unit === "lovelace") {
-      ada.push(asset);
-      return;
-    }
-    assets.push(asset);
-  });
+  const ada: Quantity[] = [];
+  const assets: Quantity[] = [];
+  for (const asset of amount) {
+    (asset.unit === "lovelace" ? ada : assets).push(asset);
+  }
   return { ada, assets };
 }
 
-export function assetsToEncodedBalance(balance: MultiAssetAmount<any>) {
-  // rencode the multiassets to a map of buffers, parsing hex keys on the object to byte buffers
-  let multiAsset = new Map<Buffer, Map<Buffer, bigint>>();
-  let internedKeys: { [key: string]: Buffer } = {};
-  const multi_assets = balance.multi_assets ?? {};
-  const allPolicyIds = Object.keys(multi_assets);
-  for (const policyId of allPolicyIds) {
-    const allAssetNames = Object.keys(multi_assets[policyId]);
-    for (const assetName of allAssetNames) {
-      const asset = multi_assets[policyId][assetName];
-      const policyIdBuffer = internedKeys[policyId] ?? Buffer.from(policyId, "hex");
-      const assetNameBuffer = internedKeys[assetName] ?? Buffer.from(assetName, "hex");
-      internedKeys[policyId] = policyIdBuffer;
-      internedKeys[assetName] = assetNameBuffer;
-      if (!multiAsset.has(policyIdBuffer)) {
-        multiAsset.set(policyIdBuffer, new Map<Buffer, bigint>());
-      }
-      multiAsset.get(policyIdBuffer)?.set(assetNameBuffer, BigInt(asset));
+function multiAssetsToCbor(amount: MultiAssetAmount): Map<Buffer, Map<Buffer, bigint>> {
+  const encoded = new Map<Buffer, Map<Buffer, bigint>>();
+  for (const [policyId, names] of Object.entries(amount.multi_assets ?? {})) {
+    const policy = new Map<Buffer, bigint>();
+    for (const [assetName, quantity] of Object.entries(names)) {
+      policy.set(Buffer.from(assetName, "hex"), parseQuantity(quantity));
     }
+    encoded.set(Buffer.from(policyId, "hex"), policy);
   }
-  const encoded = cbor
-    .encodeOne([BigInt(balance.coin ?? 0), multiAsset], {
+  return encoded;
+}
+
+/** Output value: bare coin, or [coin, multiasset map] when the amount holds native assets. */
+export function amountToCborValue(
+  amount: MultiAssetAmount
+): bigint | [bigint, Map<Buffer, Map<Buffer, bigint>>] {
+  const coin = parseQuantity(amount.coin);
+  const multiAssets = multiAssetsToCbor(amount);
+  return multiAssets.size === 0 ? coin : [coin, multiAssets];
+}
+
+/** Balance value: always [coin, multiasset map], even when the map is empty. */
+export function assetsToEncodedBalance(balance: MultiAssetAmount): string {
+  return cbor
+    .encodeOne([parseQuantity(balance.coin), multiAssetsToCbor(balance)], {
       collapseBigIntegers: true,
       highWaterMark: 65535,
     })
     .toString("hex");
-  return encoded;
 }
