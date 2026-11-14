@@ -206,13 +206,28 @@ export async function callBackground<A extends BackgroundAction>(
   return unwrapReply(action, await transport(request));
 }
 
-/** Transport for extension pages and content scripts: chrome.runtime.sendMessage. */
+/**
+ * Transport for extension pages and content scripts: chrome.runtime.sendMessage. Never rejects;
+ * failures resolve as error replies so no caller (e.g. the page relay) is left without an answer.
+ */
 export const runtimeTransport: BackgroundTransport = (request) => {
   const { promise, resolve } = Promise.withResolvers<unknown>();
-  chrome.runtime.sendMessage(request, (reply) => {
-    const error = chrome.runtime.lastError;
-    resolve(error ? { id: request.id, ok: false, error: error.message ?? "No reply from background" } : reply);
-  });
+  try {
+    chrome.runtime.sendMessage(request, (reply) => {
+      const error = chrome.runtime.lastError;
+      resolve(error ? { id: request.id, ok: false, error: error.message ?? "No reply from background" } : reply);
+    });
+  } catch (err) {
+    // sendMessage throws synchronously once the extension was reloaded or updated under a live
+    // page ("Extension context invalidated"); chrome.runtime.id is then undefined.
+    const error =
+      chrome.runtime?.id === undefined
+        ? "Sorbet was reloaded or updated; reload this page to use it"
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    resolve({ id: request.id, ok: false, error });
+  }
   return promise;
 };
 

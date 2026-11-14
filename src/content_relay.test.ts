@@ -65,4 +65,23 @@ describe("content script relay", () => {
       },
     ]);
   });
+
+  it("replies with an error when the extension was reloaded under the page, instead of hanging", async () => {
+    send.mockImplementation(() => {
+      throw new Error("Extension context invalidated.");
+    });
+    const id = Object.getOwnPropertyDescriptor(chrome.runtime, "id");
+    Object.defineProperty(chrome.runtime, "id", { configurable: true, value: undefined });
+    try {
+      await fromPage({ action: BackgroundAction.REQUEST_CONNECT, id: "11" });
+    } finally {
+      Object.defineProperty(chrome.runtime, "id", id!);
+    }
+    expect(posted).toEqual([
+      {
+        type: WindowMessageType.FROM_CONTENT_SCRIPT,
+        payload: { id: "11", ok: false, error: "Sorbet was reloaded or updated; reload this page to use it" },
+      },
+    ]);
+  });
 });
